@@ -1,15 +1,151 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// prisma/schema.prisma
 
 generator client {
-  provider = "prisma-client"
-  output   = "../app/generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  admin
+  sales_manager
+  freelance_consultant
+}
+
+model User {
+  id       Int     @id @default(autoincrement())
+  name     String
+  email    String   @unique
+  password String
+  role     UserRole
+  isActive Boolean @default(true)
+
+  // UNARNA VEZA: freelance_consultant -> sales_manager.
+  // Freelancer ima tacno jednog manager-a (FK required).
+  // Sales_manager moze imati 0..N freelancera.
+  managerId   Int
+  manager     User   @relation("SalesManagerToFreelancers", fields: [managerId], references: [id], onDelete: Restrict)
+  freelancers User[] @relation("SalesManagerToFreelancers")
+
+  // User (sales_manager) -> ClientCompany (0..N).
+  managedClientCompanies ClientCompany[] @relation("SalesManagerClientCompanies")
+
+  // User (freelance_consultant) -> ClientCompany (0..N).
+  freelanceClientCompanies ClientCompany[] @relation("FreelancerClientCompanies")
+
+  // User (sales_manager) -> Contact (0..N).
+  managedContacts Contact[] @relation("SalesManagerContacts")
+
+  // User (freelance_consultant) -> Contact (0..N).
+  freelanceContacts Contact[] @relation("FreelancerContacts")
+
+  // User (sales_manager) -> Opportunity (0..N).
+  managedOpportunities Opportunity[] @relation("SalesManagerOpportunities")
+
+  // User (freelance_consultant) -> Opportunity (0..N).
+  freelanceOpportunities Opportunity[] @relation("FreelancerOpportunities")
+
+  @@index([managerId])
+}
+
+model ClientCategory {
+  id          Int     @id @default(autoincrement())
+  name        String  @unique
+  description String?
+
+  clientCompanies ClientCompany[]
+}
+
+model ClientCompany {
+  id          Int     @id @default(autoincrement())
+  name        String
+  industry    String
+  companySize String
+  website     String?
+  country     String
+  city        String
+  address     String
+  status      String
+
+  // ClientCompany pripada tacno jednoj kategoriji.
+  categoryId Int
+  category   ClientCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  // ClientCompany je vezan za tacno jednog sales_manager-a.
+  salesManagerId Int
+  salesManager   User @relation("SalesManagerClientCompanies", fields: [salesManagerId], references: [id], onDelete: Restrict)
+
+  // ClientCompany je vezan za tacno jednog freelance_consultant-a.
+  freelanceConsultantId Int
+  freelanceConsultant   User @relation("FreelancerClientCompanies", fields: [freelanceConsultantId], references: [id], onDelete: Restrict)
+
+  contacts      Contact[]
+  opportunities Opportunity[]
+
+  @@index([categoryId])
+  @@index([salesManagerId])
+  @@index([freelanceConsultantId])
+}
+
+model Contact {
+  id       Int     @id @default(autoincrement())
+  name     String
+  email    String?
+  phone    String?
+  position String?
+  notes    String?
+
+  // Contact pripada tacno jednoj ClientCompany.
+  clientCompanyId Int
+  clientCompany   ClientCompany @relation(fields: [clientCompanyId], references: [id], onDelete: Cascade)
+
+  // Contact je vezan za tacno jednog sales_manager-a.
+  salesManagerId Int
+  salesManager   User @relation("SalesManagerContacts", fields: [salesManagerId], references: [id], onDelete: Restrict)
+
+  // Contact je vezan za tacno jednog freelance_consultant-a.
+  freelanceConsultantId Int
+  freelanceConsultant   User @relation("FreelancerContacts", fields: [freelanceConsultantId], references: [id], onDelete: Restrict)
+
+  opportunities Opportunity[]
+
+  @@index([clientCompanyId])
+  @@index([salesManagerId])
+  @@index([freelanceConsultantId])
+}
+
+model Opportunity {
+  id                Int      @id @default(autoincrement())
+  title             String
+  description       String?
+  stage             String
+  status            String
+  estimatedValue    Float
+  currency          String
+  probability       Float
+  expectedCloseDate DateTime?
+
+  // Opportunity ima tacno jedan Contact.
+  contactId Int
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Restrict)
+
+  // Opportunity je vezan za tacno jednog sales_manager-a.
+  salesManagerId Int
+  salesManager   User @relation("SalesManagerOpportunities", fields: [salesManagerId], references: [id], onDelete: Restrict)
+
+  // Opportunity je vezan za tacno jednog freelance_consultant-a.
+  freelanceConsultantId Int
+  freelanceConsultant   User @relation("FreelancerOpportunities", fields: [freelanceConsultantId], references: [id], onDelete: Restrict)
+
+  // Opportunity moze biti vezan za jednu ClientCompany (opciono).
+  clientCompanyId Int?
+  clientCompany   ClientCompany? @relation(fields: [clientCompanyId], references: [id], onDelete: SetNull)
+
+  @@index([contactId])
+  @@index([salesManagerId])
+  @@index([freelanceConsultantId])
+  @@index([clientCompanyId])
 }
