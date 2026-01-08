@@ -5,40 +5,66 @@ import { requireRole } from "@/src/server/auth/requireRole";
 import { opportunityUpdateSchema } from "@/src/server/validators/opportunity";
 import { getOpportunityById, updateOpportunity } from "@/src/server/services/opportunityService";
 
-export async function GET(req: NextRequest, ctx: { params: { id: string } }) {
+type Ctx = { params: Promise<{ id: string }> };
+
+function parseIdFromParam(idParam: string) {
+  const s = String(idParam ?? "");
+  const cleaned = s.trim().split("?")[0];
+  const id = Number.parseInt(cleaned, 10);
+  return { raw: s, cleaned, id };
+}
+
+export async function GET(_req: NextRequest, ctx: Ctx) {
   try {
     const auth = await requireAuth();
-    const id = Number(ctx.params.id);
 
-    const opp = await getOpportunityById({ userId: auth.sub, role: auth.role }, id);
+    const { id: idParam } = await ctx.params;
+    const { raw, cleaned, id } = parseIdFromParam(idParam);
+
+    if (!Number.isFinite(id)) {
+      return NextResponse.json({ message: "Neispravan ID.", debug: { raw, cleaned } }, { status: 400 });
+    }
+
+    const userId = Number((auth as any).sub);
+    if (!Number.isFinite(userId)) {
+      return NextResponse.json({ message: "Neispravan user id." }, { status: 401 });
+    }
+
+    const opp = await getOpportunityById({ userId, role: auth.role }, id);
     return ok(opp);
   } catch (e) {
     return handleError(e);
   }
 }
 
-export async function PATCH(req: NextRequest, ctx: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, ctx: Ctx) {
   try {
     const auth = await requireAuth();
     requireRole(auth.role, ["admin", "sales_manager", "freelance_consultant"]);
 
-    const id = Number(ctx.params.id);
-    const body = await req.json();
+    const { id: idParam } = await ctx.params;
+    const { raw, cleaned, id } = parseIdFromParam(idParam);
 
+    if (!Number.isFinite(id)) {
+      return NextResponse.json({ message: "Neispravan ID.", debug: { raw, cleaned } }, { status: 400 });
+    }
+
+    const userId = Number((auth as any).sub);
+    if (!Number.isFinite(userId)) {
+      return NextResponse.json({ message: "Neispravan user id." }, { status: 401 });
+    }
+
+    const body = await req.json();
     const parsed = opportunityUpdateSchema.safeParse(body);
     if (!parsed.success) {
-      return NextResponse.json({ message: parsed.error.issues[0]?.message || "Validacija nije prošla." }, { status: 422 });
+      return NextResponse.json(
+        { message: parsed.error.issues[0]?.message || "Validacija nije prošla." },
+        { status: 422 }
+      );
     }
 
-    const existing = await getOpportunityById({ userId: auth.sub, role: auth.role }, id);
-
-    if (auth.role === "sales_manager" && existing.salesManagerId !== auth.sub) {
-      return NextResponse.json({ message: "Zabranjeno." }, { status: 403 });
-    }
-
-    if (auth.role === "freelance_consultant" && existing.freelanceConsultantId !== auth.sub) {
-      return NextResponse.json({ message: "Zabranjeno." }, { status: 403 });
-    }
+    // (opciono) RBAC: proveri da user sme da menja tu priliku.
+    await getOpportunityById({ userId, role: auth.role }, id);
 
     const updated = await updateOpportunity(id, parsed.data);
     return ok(updated);
