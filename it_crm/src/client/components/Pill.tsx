@@ -6,6 +6,7 @@ import type { PillProps } from "../types/pillProps";
  * Pill komponenta za kratke oznake (tagove) u UI-u.
  * - Koristi se u hero delu home stranica.
  * - Default stil je "glass" (border + blur + transparent).
+ * 
  */
 export default function Pill({ text, className }: PillProps) {
   return (

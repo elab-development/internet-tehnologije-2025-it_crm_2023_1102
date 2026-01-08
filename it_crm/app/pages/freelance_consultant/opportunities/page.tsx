@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react"; // Uvozimo React hook-ove:
 import { useRouter } from "next/navigation"; // Uvozimo Next.js router za navigaciju (redirect).
 
 import type { Me } from "@/src/client/types/me"; // Uvozimo tip za ulogovanog korisnika.
-
 import type { Opportunity } from "@/src/client/types/opportunity"; // Uvozimo tip za Opportunity (priliku).
 
 function useDebounce<T>(value: T, delayMs = 350) { // Debounce hook da uspori promene inputa (npr. search) pre poziva API-ja.
@@ -66,204 +65,203 @@ export default function FreelancerOpportunitiesPage() { // Glavna stranica za fr
     let cancelled = false; // Flag da sprečimo setState nakon unmount-a.
 
     (async () => { // IIFE da koristimo await.
-      try { // U try bloku radimo fetch.
+      try {
         const res = await fetch("/api/auth/me"); // Pozivamo API da dobijemo trenutno ulogovanog user-a.
-        if (!res.ok) { // Ako nije ok, user nije ulogovan ili nema validan token.
+        if (!res.ok) {
           router.push("/pages/auth/login"); // Redirect na login.
-          return; // Prekidamo dalje izvršavanje.
+          return;
         }
 
         const data = (await res.json()) as Me; // Parsiramo odgovor kao Me.
 
-        if (!data || data.role !== "freelance_consultant") { // Ako nema data ili uloga nije freelancer.
-          if (data?.role) router.push(`/pages/${data.role}/home`); // Ako postoji uloga, prebacujemo na odgovarajući home.
-          else router.push("/pages/auth/login"); // Ako ne postoji uloga, vraćamo na login.
-          return; // Prekidamo dalje izvršavanje.
+        if (!data || data.role !== "freelance_consultant") {
+          if (data?.role) router.push(`/pages/${data.role}/home`);
+          else router.push("/pages/auth/login");
+          return;
         }
 
         if (!cancelled) setMe(data); // Ako nije unmount-ovano, setujemo me.
-      } catch { // Hvata mrežne/JS greške.
+      } catch {
         router.push("/pages/auth/login"); // Ako nešto pukne, šaljemo na login.
-      } finally { // Uvek gasimo auth loading.
-        if (!cancelled) setAuthLoading(false); // Postavljamo authLoading na false (ako nije unmount).
+      } finally {
+        if (!cancelled) setAuthLoading(false); // Gasimo auth loading.
       }
-    })(); // Pozivamo IIFE.
+    })();
 
-    return () => { // Cleanup.
-      cancelled = true; // Setujemo flag da sprečimo setState nakon unmount-a.
+    return () => {
+      cancelled = true; // Cleanup.
     };
-  }, [router]); // Zavisnost: router.
+  }, [router]);
 
   // Reset page on filters.
-  useEffect(() => { // Kad se promene filteri ili search, vraćamo se na prvu stranu.
+  useEffect(() => {
     setPage(1); // Reset paginacije.
-  }, [dq, stage, status]); // Zavisnosti: debounced search, stage filter, status filter.
+  }, [dq, stage, status]);
 
   // Fetch list.
-  useEffect(() => { // Effect za učitavanje liste prilika.
-    if (authLoading) return; // Ako auth još traje, ne radimo fetch.
-    if (!me) return; // Ako me nije setovan, ne radimo fetch.
+  useEffect(() => {
+    if (authLoading) return;
+    if (!me) return;
 
-    let cancelled = false; // Flag da sprečimo setState nakon unmount-a.
+    let cancelled = false;
 
-    (async () => { // IIFE za async/await.
-      setLoading(true); // Uključujemo loading.
-      setError(null); // Resetujemo grešku.
+    (async () => {
+      setLoading(true);
+      setError(null);
 
-      try { // Pokušavamo da učitamo listu.
-        const qs = buildQuery({ // Kreiramo query string iz parametara.
-          page, // Trenutna strana.
-          pageSize: PAGE_SIZE, // Koliko po strani.
-          q: dq || undefined, // Search query (ako je prazan string -> undefined).
-          stage: stage === "all" ? undefined : stage, // Stage filter (all -> bez parametra).
-          status: status === "all" ? undefined : status, // Status filter (all -> bez parametra).
+      try {
+        const qs = buildQuery({
+          page,
+          pageSize: PAGE_SIZE,
+          q: dq || undefined,
+          stage: stage === "all" ? undefined : stage,
+          status: status === "all" ? undefined : status,
         });
 
-        const res = await fetch(`/api/opportunities${qs}`, { method: "GET" }); // Pozivamo API list endpoint.
-        if (!res.ok) throw new Error("Cannot load opportunities."); // Ako API ne vrati ok, bacamo grešku (eng label).
+        const res = await fetch(`/api/opportunities${qs}`, { method: "GET" });
+        if (!res.ok) throw new Error("Cannot load opportunities.");
 
-        const json = await res.json(); // Parsiramo JSON.
+        const json = await res.json();
 
-        const items: Opportunity[] = json?.items ?? []; // Uzimamo items iz json-a, fallback na [].
-        const totalValue: number = json?.total ?? 0; // Uzimamo total iz json-a, fallback na 0.
+        const items: Opportunity[] = json?.items ?? [];
+        const totalValue: number = json?.total ?? 0;
 
-        if (!cancelled) { // Ako komponenta i dalje postoji.
-          setRows(Array.isArray(items) ? items : []); // Sigurno setujemo rows kao niz.
-          setTotal(typeof totalValue === "number" ? totalValue : 0); // Sigurno setujemo total kao number.
+        if (!cancelled) {
+          setRows(Array.isArray(items) ? items : []);
+          setTotal(typeof totalValue === "number" ? totalValue : 0);
         }
-      } catch (e: any) { // Hvatanje greške.
-        if (!cancelled) { // Ako nije unmount-ovano.
-          setRows([]); // Čistimo listu.
-          setTotal(0); // Resetujemo total.
-          setError(e?.message || "An error occurred."); // Postavljamo poruku greške (eng fallback).
+      } catch (e: any) {
+        if (!cancelled) {
+          setRows([]);
+          setTotal(0);
+          setError(e?.message || "An error occurred.");
         }
-      } finally { // Uvek gasimo loading.
-        if (!cancelled) setLoading(false); // Isključujemo loading.
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    })(); // Pozivamo IIFE.
+    })();
 
-    return () => { // Cleanup.
-      cancelled = true; // Sprečavamo setState nakon unmount-a.
+    return () => {
+      cancelled = true;
     };
-  }, [authLoading, me, page, dq, stage, status]); // Zavisnosti: auth, me, paginacija i filteri.
+  }, [authLoading, me, page, dq, stage, status]);
 
   // Details fetch.
-  useEffect(() => { // Effect za učitavanje detalja kada se otvori drawer.
-    if (!openId) { // Ako nema openId, znači da je drawer zatvoren.
-      setDetails(null); // Resetujemo details.
-      setDetailsError(null); // Resetujemo error.
-      return; // Prekidamo effect.
+  useEffect(() => {
+    if (!openId) {
+      setDetails(null);
+      setDetailsError(null);
+      return;
     }
 
-    let cancelled = false; // Flag za unmount.
+    let cancelled = false;
 
-    (async () => { // IIFE za async.
-      setDetailsLoading(true); // Uključujemo loading za detalje.
-      setDetailsError(null); // Resetujemo error.
+    (async () => {
+      setDetailsLoading(true);
+      setDetailsError(null);
 
-      try { // Pokušaj fetch-a detalja.
-        const res = await fetch(`/api/opportunities/${openId}`, { method: "GET" }); // Pozivamo details endpoint.
-        if (!res.ok) throw new Error("Cannot load opportunity details."); // Ako nije ok, bacamo grešku (eng).
+      try {
+        const res = await fetch(`/api/opportunities/${openId}`, { method: "GET" });
+        if (!res.ok) throw new Error("Cannot load opportunity details.");
 
-        const json = await res.json(); // Parsiramo JSON.
-        if (!cancelled) setDetails(json as Opportunity); // Setujemo details ako nije unmount.
-      } catch (e: any) { // Hvatanje greške.
-        if (!cancelled) setDetailsError(e?.message || "Error."); // Postavljamo grešku (eng fallback).
-      } finally { // Uvek gasimo details loading.
-        if (!cancelled) setDetailsLoading(false); // Isključujemo details loading.
+        const json = await res.json();
+        if (!cancelled) setDetails(json as Opportunity);
+      } catch (e: any) {
+        if (!cancelled) setDetailsError(e?.message || "Error.");
+      } finally {
+        if (!cancelled) setDetailsLoading(false);
       }
-    })(); // Pozivamo IIFE.
+    })();
 
-    return () => { // Cleanup.
-      cancelled = true; // Sprečavamo setState posle unmount-a.
+    return () => {
+      cancelled = true;
     };
-  }, [openId]); // Zavisnost: openId (kad se promeni, učitavamo nove detalje).
+  }, [openId]);
 
-  async function patchOpportunity(id: number, payload: Partial<Opportunity>) { // Helper za PATCH update na opportunity.
-    const res = await fetch(`/api/opportunities/${id}`, { // Pozivamo PATCH endpoint.
-      method: "PATCH", // HTTP metoda PATCH.
-      headers: { "Content-Type": "application/json" }, // Postavljamo JSON header.
-      body: JSON.stringify(payload), // Payload šaljemo kao JSON string.
+  async function patchOpportunity(id: number, payload: Partial<Opportunity>) {
+    const res = await fetch(`/api/opportunities/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
     });
 
-    if (!res.ok) { // Ako odgovor nije ok.
-      const msg = await res.json().catch(() => null); // Pokušavamo da izvučemo poruku iz JSON-a.
-      throw new Error(msg?.message || "Update failed."); // Bacamo grešku (eng fallback).
+    if (!res.ok) {
+      const msg = await res.json().catch(() => null);
+      throw new Error(msg?.message || "Update failed.");
     }
 
-    return (await res.json()) as Opportunity; // Vraćamo updated opportunity iz odgovora.
+    return (await res.json()) as Opportunity;
   }
 
-  async function onChangeStage(id: number, next: string) { // Handler za promenu stage-a iz dropdown-a.
-    const prev = rows; // Čuvamo prethodno stanje liste (za rollback).
-    setRows((r) => r.map((x) => (x.id === id ? { ...x, stage: next } : x))); // Optimistic update: odmah menjamo u UI.
+  async function onChangeStage(id: number, next: string) {
+    const prev = rows;
+    setRows((r) => r.map((x) => (x.id === id ? { ...x, stage: next } : x)));
 
-    try { // Pokušavamo da sačuvamo na backend-u.
-      await patchOpportunity(id, { stage: next }); // Pozivamo PATCH sa stage promenom.
-    } catch (e: any) { // Ako pukne.
-      setRows(prev); // Vraćamo prethodno stanje (rollback).
-      alert(e?.message || "Error."); // Prikazujemo grešku korisniku.
-    }
-  }
-
-  async function onChangeStatus(id: number, next: string) { // Handler za promenu status-a iz dropdown-a.
-    const prev = rows; // Čuvamo prethodno stanje liste.
-    setRows((r) => r.map((x) => (x.id === id ? { ...x, status: next } : x))); // Optimistic update.
-
-    try { // Pokušavamo da sačuvamo promenu.
-      await patchOpportunity(id, { status: next }); // PATCH sa status promenom.
-    } catch (e: any) { // Ako backend vrati grešku.
-      setRows(prev); // Rollback.
-      alert(e?.message || "Error."); // Alert sa porukom.
+    try {
+      await patchOpportunity(id, { stage: next });
+    } catch (e: any) {
+      setRows(prev);
+      alert(e?.message || "Error.");
     }
   }
 
-  if (authLoading) { // Ako se auth još učitava.
-    return ( // Prikazujemo skeleton loader.
-      <main className="mx-auto max-w-6xl px-4 py-8"> {/* Layout wrapper. */}
-        <div className="h-10 w-56 animate-pulse rounded bg-slate-200" /> {/* Skeleton za naslov. */}
-        <div className="mt-6 h-64 animate-pulse rounded-2xl bg-slate-100" /> {/* Skeleton za tabelu/kontenat. */}
+  async function onChangeStatus(id: number, next: string) {
+    const prev = rows;
+    setRows((r) => r.map((x) => (x.id === id ? { ...x, status: next } : x)));
+
+    try {
+      await patchOpportunity(id, { status: next });
+    } catch (e: any) {
+      setRows(prev);
+      alert(e?.message || "Error.");
+    }
+  }
+
+  if (authLoading) {
+    return (
+      <main className="mx-auto max-w-6xl px-4 py-8">
+        <div className="h-10 w-56 animate-pulse rounded bg-slate-200" />
+        <div className="mt-6 h-64 animate-pulse rounded-2xl bg-slate-100" />
       </main>
     );
   }
 
-  return ( // Glavni UI kada je auth završen.
-    <main className="mx-auto max-w-6xl px-4 py-8"> {/* Centralni layout. */}
-      <header className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between"> {/* Header sa nazivom i user info. */}
-        <div> {/* Leva strana header-a. */}
-          <h1 className="text-2xl font-semibold text-slate-900">My opportunities.</h1> {/* Naslov na engleskom. */}
-          <p className="mt-1 text-sm text-slate-600"> {/* Podnaslov/objašnjenje. */}
+  return (
+    <main className="mx-auto max-w-6xl px-4 py-8">
+      <header className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-900">My opportunities.</h1>
+          <p className="mt-1 text-sm text-slate-600">
             Overview of opportunities assigned to a freelance consultant, with quick stage and status updates.
-            {/* Tekst na engleskom (traženo). */}
           </p>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm"> {/* Kartica sa user info. */}
-          <div className="text-sm font-semibold text-slate-900">{me?.name}.</div> {/* Ime korisnika. */}
-          <div className="text-xs text-slate-600">Freelance consultant.</div> {/* Uloga na engleskom. */}
+        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+          <div className="text-sm font-semibold text-slate-900">{me?.name}.</div>
+          <div className="text-xs text-slate-600">Freelance consultant.</div>
         </div>
       </header>
 
-      <section className="mt-6 grid gap-3 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-4"> {/* Filter sekcija. */}
-        <div className="md:col-span-2"> {/* Search zauzima 2 kolone na md+. */}
-          <label className="text-xs font-semibold text-slate-700">Search (title).</label> {/* Labela na engleskom. */}
+      <section className="mt-6 grid gap-3 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-4">
+        <div className="md:col-span-2">
+          <label className="text-xs font-semibold text-slate-700">Search (title).</label>
           <input
-            value={q} // Input je controlled preko q state-a.
-            onChange={(e) => setQ(e.target.value)} // Update q state na promenu.
-            placeholder="Search by opportunity title." // Placeholder na engleskom.
-            className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400" // Tailwind stilovi.
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search by opportunity title."
+            className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
           />
         </div>
 
-        <div> {/* Stage filter. */}
-          <label className="text-xs font-semibold text-slate-700">Stage.</label> {/* Labela (eng). */}
+        <div>
+          <label className="text-xs font-semibold text-slate-700">Stage.</label>
           <select
-            value={stage} // Controlled select.
-            onChange={(e) => setStage(e.target.value)} // Update stage filter.
-            className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400" // Stilovi.
+            value={stage}
+            onChange={(e) => setStage(e.target.value)}
+            className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
           >
-            <option value="all">All.</option> {/* All opcija. */}
-            {STAGES.map((s) => ( // Renderujemo sve stage opcije.
+            <option value="all">All.</option>
+            {STAGES.map((s) => (
               <option key={s} value={s}>
                 {s}.
               </option>
@@ -271,15 +269,15 @@ export default function FreelancerOpportunitiesPage() { // Glavna stranica za fr
           </select>
         </div>
 
-        <div> {/* Status filter. */}
-          <label className="text-xs font-semibold text-slate-700">Status.</label> {/* Labela (eng). */}
+        <div>
+          <label className="text-xs font-semibold text-slate-700">Status.</label>
           <select
-            value={status} // Controlled select.
-            onChange={(e) => setStatus(e.target.value)} // Update status filter.
-            className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400" // Stilovi.
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+            className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
           >
-            <option value="all">All.</option> {/* All opcija. */}
-            {STATUSES.map((s) => ( // Renderujemo sve status opcije.
+            <option value="all">All.</option>
+            {STATUSES.map((s) => (
               <option key={s} value={s}>
                 {s}.
               </option>
@@ -288,72 +286,92 @@ export default function FreelancerOpportunitiesPage() { // Glavna stranica za fr
         </div>
       </section>
 
-      <section className="mt-4 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm"> {/* Sekcija tabele. */}
-        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3"> {/* Header tabele. */}
-          <div className="text-sm font-semibold text-slate-900"> {/* Levo: broj rezultata. */}
-            Results: <span className="text-slate-600">{total}.</span> {/* Ukupan broj rezultata. */}
+      <section className="mt-4 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+          <div className="text-sm font-semibold text-slate-900">
+            Results: <span className="text-slate-600">{total}.</span>
           </div>
-          <div className="text-xs text-slate-600"> {/* Desno: paginacija info. */}
+          <div className="text-xs text-slate-600">
             Page {page} / {Math.max(1, totalPages)}.
           </div>
         </div>
 
-        {error ? <div className="px-4 py-6 text-sm text-rose-700">{error}</div> : null} {/* Prikaz greške ako postoji. */}
+        {error ? <div className="px-4 py-6 text-sm text-rose-700">{error}</div> : null}
 
-        <div className="w-full overflow-x-auto"> {/* Omogućavamo horizontalni scroll na manjim ekranima. */}
-          <table className="w-full min-w-[1120px]"> {/* Tabela sa minimalnom širinom. */}
-            <thead className="bg-slate-50"> {/* Header tabele. */}
+        <div className="w-full overflow-x-auto">
+          {/* VAŽNO: unutar <table>/<thead> ne sme postojati {" "} ili bilo kakav tekst node */}
+          <table className="w-full min-w-[1120px]">
+            <thead className="bg-slate-50">
               <tr className="text-left text-xs font-semibold text-slate-700">
-                <th className="px-4 py-3">Title.</th> {/* Kolona: title. */}
-                <th className="px-4 py-3">Contact.</th> {/* Kolona: contact. */}
-                <th className="px-4 py-3">Client.</th> {/* Kolona: client. */}
-                <th className="px-4 py-3">Stage.</th> {/* Kolona: stage. */}
-                <th className="px-4 py-3">Status.</th> {/* Kolona: status. */}
-                <th className="px-4 py-3">Value.</th> {/* Kolona: value. */}
-                <th className="px-4 py-3">Probability.</th> {/* Kolona: probability. */}
+                <th className="px-4 py-3">Title.</th>
+                <th className="px-4 py-3">Contact.</th>
+                <th className="px-4 py-3">Client.</th>
+                <th className="px-4 py-3">Stage.</th>
+                <th className="px-4 py-3">Status.</th>
+                <th className="px-4 py-3">Value.</th>
+                <th className="px-4 py-3">Probability.</th>
               </tr>
             </thead>
 
-            <tbody className="divide-y divide-slate-100"> {/* Body tabele sa linijama između redova. */}
-              {loading ? ( // Ako se učitava lista.
-                Array.from({ length: PAGE_SIZE }).map((_, i) => ( // Renderujemo skeleton redove.
+            <tbody className="divide-y divide-slate-100">
+              {loading ? (
+                Array.from({ length: PAGE_SIZE }).map((_, i) => (
                   <tr key={i}>
-                    <td className="px-4 py-4"><div className="h-4 w-56 animate-pulse rounded bg-slate-200" /></td>
-                    <td className="px-4 py-4"><div className="h-4 w-40 animate-pulse rounded bg-slate-200" /></td>
-                    <td className="px-4 py-4"><div className="h-4 w-40 animate-pulse rounded bg-slate-200" /></td>
-                    <td className="px-4 py-4"><div className="h-9 w-36 animate-pulse rounded bg-slate-200" /></td>
-                    <td className="px-4 py-4"><div className="h-9 w-36 animate-pulse rounded bg-slate-200" /></td>
-                    <td className="px-4 py-4"><div className="h-4 w-24 animate-pulse rounded bg-slate-200" /></td>
-                    <td className="px-4 py-4"><div className="h-4 w-20 animate-pulse rounded bg-slate-200" /></td>
+                    <td className="px-4 py-4">
+                      <div className="h-4 w-56 animate-pulse rounded bg-slate-200" />
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="h-4 w-40 animate-pulse rounded bg-slate-200" />
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="h-4 w-40 animate-pulse rounded bg-slate-200" />
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="h-9 w-36 animate-pulse rounded bg-slate-200" />
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="h-9 w-36 animate-pulse rounded bg-slate-200" />
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="h-4 w-20 animate-pulse rounded bg-slate-200" />
+                    </td>
                   </tr>
                 ))
-              ) : rows.length === 0 ? ( // Ako nema rezultata.
+              ) : rows.length === 0 ? (
                 <tr>
                   <td className="px-4 py-6 text-sm text-slate-600" colSpan={7}>
                     No results.
                   </td>
                 </tr>
-              ) : ( // Inače renderujemo redove.
+              ) : (
                 rows.map((o) => (
-                  <tr key={o.id} className="text-sm text-slate-900"> {/* Jedan red tabele. */}
+                  <tr key={o.id} className="text-sm text-slate-900">
                     <td
-                      className="px-4 py-4 font-semibold hover:underline cursor-pointer" // Stil i klikabilnost.
-                      onClick={() => setOpenId(o.id)} // Otvaramo drawer tako što setujemo openId.
-                      title="Open details." // Tooltip na engleskom.
+                      className="px-4 py-4 cursor-pointer font-semibold hover:underline"
+                      onClick={() => setOpenId(o.id)}
+                      title="Open details."
                     >
-                      {o.title}. {/* Prikaz title-a. */}
+                      {o.title}.
                     </td>
 
-                    <td className="px-4 py-4 text-slate-700">{o.contact?.name ?? `#${o.contactId}` }.</td> {/* Contact ime ili fallback. */}
-                    <td className="px-4 py-4 text-slate-700">{o.clientCompany?.name ?? "-" }.</td> {/* Client name ili "-". */}
+                    <td className="px-4 py-4 text-slate-700">
+                      {(o.contact?.name ?? `#${o.contactId}`) + "."}
+                    </td>
 
-                    <td className="px-4 py-4"> {/* Stage dropdown u redu. */}
+                    <td className="px-4 py-4 text-slate-700">
+                      {(o.clientCompany?.name ?? "-") + "."}
+                    </td>
+
+                    <td className="px-4 py-4">
                       <select
-                        value={o.stage} // Trenutna vrednost stage-a.
-                        onChange={(e) => onChangeStage(o.id, e.target.value)} // Pozivamo handler.
-                        className="w-40 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400" // Stil.
+                        value={o.stage}
+                        onChange={(e) => onChangeStage(o.id, e.target.value)}
+                        className="w-40 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
                       >
-                        {STAGES.map((s) => ( // Render svih stage opcija.
+                        {STAGES.map((s) => (
                           <option key={s} value={s}>
                             {s}.
                           </option>
@@ -361,13 +379,13 @@ export default function FreelancerOpportunitiesPage() { // Glavna stranica za fr
                       </select>
                     </td>
 
-                    <td className="px-4 py-4"> {/* Status dropdown u redu. */}
+                    <td className="px-4 py-4">
                       <select
-                        value={o.status} // Trenutna vrednost status-a.
-                        onChange={(e) => onChangeStatus(o.id, e.target.value)} // Pozivamo handler.
-                        className="w-40 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400" // Stil.
+                        value={o.status}
+                        onChange={(e) => onChangeStatus(o.id, e.target.value)}
+                        className="w-40 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
                       >
-                        {STATUSES.map((s) => ( // Render svih status opcija.
+                        {STATUSES.map((s) => (
                           <option key={s} value={s}>
                             {s}.
                           </option>
@@ -375,12 +393,12 @@ export default function FreelancerOpportunitiesPage() { // Glavna stranica za fr
                       </select>
                     </td>
 
-                    <td className="px-4 py-4 text-slate-700"> {/* Value prikaz. */}
-                      {Number(o.estimatedValue).toLocaleString()} {o.currency}. {/* Formatiramo broj + valuta. */}
+                    <td className="px-4 py-4 text-slate-700">
+                      {Number(o.estimatedValue).toLocaleString()} {o.currency}.
                     </td>
 
-                    <td className="px-4 py-4 text-slate-700"> {/* Probability prikaz. */}
-                      {Math.round(Number(o.probability) * 100)}%. {/* Pretvaramo 0..1 u procenat. */}
+                    <td className="px-4 py-4 text-slate-700">
+                      {Math.round(Number(o.probability) * 100)}%.
                     </td>
                   </tr>
                 ))
@@ -389,23 +407,23 @@ export default function FreelancerOpportunitiesPage() { // Glavna stranica za fr
           </table>
         </div>
 
-        <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3"> {/* Footer tabele sa paginacijom. */}
+        <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3">
           <button
-            type="button" // Tip dugmeta.
-            disabled={page <= 1 || loading} // Disable ako smo na prvoj strani ili se učitava.
-            onClick={() => setPage((p) => Math.max(1, p - 1))} // Smanjujemo stranu ali ne ispod 1.
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold transition disabled:opacity-50" // Stil.
+            type="button"
+            disabled={page <= 1 || loading}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold transition disabled:opacity-50"
           >
             Prev.
           </button>
 
-          <div className="text-xs text-slate-600">Showing {rows.length} of {total}.</div> {/* Info o prikazu. */}
+          <div className="text-xs text-slate-600">Showing {rows.length} of {total}.</div>
 
           <button
-            type="button" // Tip dugmeta.
-            disabled={page >= totalPages || loading} // Disable ako smo na poslednjoj strani ili se učitava.
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))} // Uvećavamo stranu ali ne preko max.
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold transition disabled:opacity-50" // Stil.
+            type="button"
+            disabled={page >= totalPages || loading}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold transition disabled:opacity-50"
           >
             Next.
           </button>
@@ -413,46 +431,49 @@ export default function FreelancerOpportunitiesPage() { // Glavna stranica za fr
       </section>
 
       {/* Details drawer. */}
-      {openId ? ( // Ako postoji openId, prikazujemo drawer overlay.
-        <div className="fixed inset-0 z-50"> {/* Overlay wrapper preko celog ekrana. */}
-          <div className="absolute inset-0 bg-black/30" onClick={() => setOpenId(null)} /> {/* Klik na pozadinu zatvara drawer. */}
-          <div className="absolute right-0 top-0 h-full w-full max-w-xl overflow-y-auto bg-white shadow-2xl"> {/* Sam drawer panel. */}
-            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4"> {/* Drawer header. */}
+      {openId ? (
+        <div className="fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/30" onClick={() => setOpenId(null)} />
+          <div className="absolute right-0 top-0 h-full w-full max-w-xl overflow-y-auto bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
               <div>
-                <div className="text-sm font-semibold text-slate-900">Opportunity details.</div> {/* Naslov drawer-a. */}
-                <div className="text-xs text-slate-600">GET /api/opportunities/{openId}.</div> {/* Informacija o ruti. */}
+                <div className="text-sm font-semibold text-slate-900">Opportunity details.</div>
+                <div className="text-xs text-slate-600">{`GET /api/opportunities/${openId}.`}</div>
               </div>
               <button
-                type="button" // Tip dugmeta.
-                onClick={() => setOpenId(null)} // Zatvaramo drawer.
-                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold" // Stil.
+                type="button"
+                onClick={() => setOpenId(null)}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold"
               >
                 Close.
               </button>
             </div>
 
-            {detailsError ? <div className="px-5 py-4 text-sm text-rose-700">{detailsError}</div> : null} {/* Prikaz greške. */}
+            {detailsError ? <div className="px-5 py-4 text-sm text-rose-700">{detailsError}</div> : null}
 
-            {detailsLoading ? ( // Ako se učitava drawer.
+            {detailsLoading ? (
               <div className="px-5 py-6">
-                <div className="h-6 w-60 animate-pulse rounded bg-slate-200" /> {/* Skeleton naslov. */}
-                <div className="mt-3 h-4 w-80 animate-pulse rounded bg-slate-200" /> {/* Skeleton podnaslov. */}
+                <div className="h-6 w-60 animate-pulse rounded bg-slate-200" />
+                <div className="mt-3 h-4 w-80 animate-pulse rounded bg-slate-200" />
               </div>
-            ) : details ? ( // Ako imamo details, prikazujemo sadržaj.
+            ) : details ? (
               <div className="px-5 py-5">
-                <h2 className="text-xl font-semibold text-slate-900">{details.title}.</h2> {/* Title. */}
+                <h2 className="text-xl font-semibold text-slate-900">{details.title}.</h2>
+
+                {/* VAŽNO: uklanjamo {" "} i spajamo tekst bez whitespace node-ova */}
                 <p className="mt-1 text-sm text-slate-600">
-                  {details.contact?.name ?? `Contact #${details.contactId}`} ·{" "}
-                  {details.clientCompany?.name ?? "No client company"}.
+                  {`${details.contact?.name ?? `Contact #${details.contactId}`} · ${
+                    details.clientCompany?.name ?? "No client company"
+                  }.`}
                 </p>
 
-                {details.description ? ( // Ako postoji opis, prikazujemo ga.
+                {details.description ? (
                   <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-800">
                     {details.description}.
                   </div>
                 ) : null}
 
-                <div className="mt-4 grid gap-3 md:grid-cols-2"> {/* Grid kartice sa vrednostima. */}
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
                   <div className="rounded-2xl border border-slate-200 bg-white p-4">
                     <div className="text-xs font-semibold text-slate-700">Stage.</div>
                     <div className="mt-1 text-slate-900">{details.stage}.</div>

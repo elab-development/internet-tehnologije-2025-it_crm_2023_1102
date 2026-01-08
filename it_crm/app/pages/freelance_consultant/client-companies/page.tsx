@@ -197,7 +197,7 @@ export default function FreelancerClientCompaniesPage() { // Glavna stranica za 
       setDetailsError(null); // Reset greške.
 
       try {
-        const res = await fetch(`/api/client-company/${openId}`, { method: "GET" }); // Pozivamo details endpoint.
+        const res = await fetch(`/api/client-companies/${openId}`, { method: "GET" }); // Pozivamo details endpoint.
         if (!res.ok) throw new Error("Cannot load client details."); // Greška na engleskom.
 
         const json = await res.json(); // Parsiramo JSON.

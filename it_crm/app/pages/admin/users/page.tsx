@@ -123,35 +123,33 @@ export default function AdminUsersPage() { // Glavna Admin stranica za upravljan
       setError(null); // Resetujemo grešku.
 
       try {
-        const isActive = // Pretvaramo statusFilter u boolean ili undefined (kako backend očekuje).
-          statusFilter === "all" ? undefined : statusFilter === "active" ? true : false;
+        const isActive =
+          statusFilter === "all" ? undefined : statusFilter === "active" ? true : false; // Pretvaramo status filter u boolean.
 
         const qs = buildQuery({ // Gradimo query string za backend.
           page, // Trenutna strana.
           pageSize: PAGE_SIZE, // Veličina strane.
-          q: debouncedSearch || undefined, // Backend očekuje q kao search parametar.
-          role: roleFilter === "all" ? undefined : roleFilter, // Ako je all, ne šaljemo role.
-          isActive: typeof isActive === "boolean" ? isActive : undefined, // Backend očekuje isActive true/false.
+          q: debouncedSearch || undefined, // Backend očekuje q.
+          role: roleFilter === "all" ? undefined : roleFilter, // Backend očekuje role.
+          isActive: typeof isActive === "boolean" ? isActive : undefined, // Backend očekuje isActive.
         });
 
-        const res = await fetch(`/api/admin/users${qs}`, { method: "GET" }); // Pozivamo admin users list endpoint.
-        if (!res.ok) throw new Error("Cannot load users list."); // Poruka greške na engleskom (traženo).
+        const res = await fetch(`/api/admin/users${qs}`, { method: "GET" }); // Pozivamo endpoint.
+        if (!res.ok) throw new Error("Cannot load users list."); // Poruka na engleskom.
 
-        const json = await res.json(); // Parsiramo JSON odgovor.
+        const json = await res.json(); // Parsiramo JSON.
+        const items: UserRow[] = json?.items ?? []; // Items ili prazan niz.
+        const totalValue: number = json?.total ?? 0; // Total ili 0.
 
-        // ok() wrapper vraća objekat { items, total, page, pageSize } (po tvojoj napomeni).
-        const items: UserRow[] = json?.items ?? []; // Sigurno uzimamo items ili prazan niz.
-        const totalValue: number = json?.total ?? 0; // Sigurno uzimamo total ili 0.
-
-        if (!cancelled) { // Ako nije unmount, ažuriramo state.
-          setRows(Array.isArray(items) ? items : []); // Provera da li je items zaista niz.
-          setTotal(typeof totalValue === "number" ? totalValue : 0); // Provera da li je total broj.
+        if (!cancelled) {
+          setRows(Array.isArray(items) ? items : []); // Upisujemo rows.
+          setTotal(typeof totalValue === "number" ? totalValue : 0); // Upisujemo total.
         }
       } catch (e: any) {
-        if (!cancelled) { // Ako nije unmount, postavljamo error state.
-          setRows([]); // Praznimo tabelu.
-          setTotal(0); // Resetujemo total.
-          setError(e?.message || "Something went wrong."); // Greška na engleskom (fallback).
+        if (!cancelled) {
+          setRows([]); // Reset rows.
+          setTotal(0); // Reset total.
+          setError(e?.message || "Something went wrong."); // Greška na engleskom.
         }
       } finally {
         if (!cancelled) setLoading(false); // Gasimo loading.
@@ -159,146 +157,151 @@ export default function AdminUsersPage() { // Glavna Admin stranica za upravljan
     })();
 
     return () => {
-      cancelled = true; // Cleanup: označimo unmount.
+      cancelled = true; // Cleanup.
     };
-  }, [authLoading, me, page, debouncedSearch, roleFilter, statusFilter]); // Zavisnosti koje menjaju listu.
+  }, [authLoading, me, page, debouncedSearch, roleFilter, statusFilter]); // Zavisnosti.
 
-  function toggleSort(next: SortBy) { // Funkcija koja menja sort kolonu i smer.
-    if (sortBy !== next) { // Ako menjamo na novu kolonu...
-      setSortBy(next); // Postavljamo novu kolonu.
-      setSortDir("asc"); // Resetujemo smer na asc.
-      return; // Prekid.
+  function toggleSort(next: SortBy) { // Menja sort kolonu i smer.
+    if (sortBy !== next) { // Ako prelazimo na novu kolonu...
+      setSortBy(next); // Postavi novu kolonu.
+      setSortDir("asc"); // Resetuj smer.
+      return; // Prekini.
     }
-    setSortDir((d) => (d === "asc" ? "desc" : "asc")); // Ako je ista kolona, samo toggluj asc/desc.
+    setSortDir((d) => (d === "asc" ? "desc" : "asc")); // Toggle smer.
   }
 
-  function SortIcon({ col }: { col: SortBy }) { // Mala komponenta za prikaz ikonice sortiranja u header-u.
-    const active = sortBy === col; // Da li je ova kolona aktivna.
-    if (!active) return <span className="text-slate-300">⇅</span>; // Ako nije aktivna, prikaži neutralnu ikonu.
-    return <span className="text-slate-700">{sortDir === "asc" ? "↑" : "↓"}</span>; // Ako jeste, prikaži smer.
+  function SortIcon({ col }: { col: SortBy }) { // Ikonica sortiranja.
+    const active = sortBy === col; // Da li je aktivno.
+    if (!active) return <span className="text-slate-300">⇅</span>; // Neutralno.
+    return <span className="text-slate-700">{sortDir === "asc" ? "↑" : "↓"}</span>; // Smer.
   }
 
-  // Sortiranje client-side (pošto backend ne sortira).
-  const sortedRows = useMemo(() => { // Memoizujemo sortiranu listu.
-    const copy = [...rows]; // Pravimo kopiju da ne mutiramo original state.
+  const sortedRows = useMemo(() => { // Sortiranje client-side.
+    const copy = [...rows]; // Kopija niza.
 
-    copy.sort((a, b) => { // Sort funkcija.
-      const dir = sortDir === "asc" ? 1 : -1; // Dir faktor koji menja smer.
+    copy.sort((a, b) => { // Sort comparator.
+      const dir = sortDir === "asc" ? 1 : -1; // Faktor smera.
+      const av = (a as any)[sortBy]; // Vrednost a.
+      const bv = (b as any)[sortBy]; // Vrednost b.
 
-      const av = (a as any)[sortBy]; // Uzmi vrednost iz objekta a za izabranu kolonu.
-      const bv = (b as any)[sortBy]; // Uzmi vrednost iz objekta b za izabranu kolonu.
+      if (typeof av === "boolean" && typeof bv === "boolean") return (Number(av) - Number(bv)) * dir; // Boolean sort.
+      if (typeof av === "number" && typeof bv === "number") return (av - bv) * dir; // Number sort.
 
-      if (typeof av === "boolean" && typeof bv === "boolean") { // Ako su boolean vrednosti...
-        return (Number(av) - Number(bv)) * dir; // Sortiramo preko 0/1.
-      }
-
-      if (typeof av === "number" && typeof bv === "number") { // Ako su brojevi...
-        return (av - bv) * dir; // Numeričko sortiranje.
-      }
-
-      return String(av ?? "") // Ako su string (ili nešto drugo), pretvorimo u string.
-        .localeCompare(String(bv ?? ""), undefined, { sensitivity: "base" }) * dir; // Case-insensitive compare.
+      return (
+        String(av ?? "").localeCompare(String(bv ?? ""), undefined, { sensitivity: "base" }) * dir
+      ); // String sort (case-insensitive).
     });
 
-    return copy; // Vraćamo sortiranu kopiju.
-  }, [rows, sortBy, sortDir]); // Zavisnosti: kada se promeni rows ili sort podešavanje.
+    return copy; // Vraćamo sortirano.
+  }, [rows, sortBy, sortDir]); // Zavisnosti.
 
-  if (authLoading) { // Dok traje auth provera, prikazujemo skeleton.
+  if (authLoading) { // Skeleton dok traje auth.
     return (
-      <main className="mx-auto max-w-6xl px-4 py-8"> {/* Wrapper za skeleton. */}
-        <div className="h-10 w-56 animate-pulse rounded bg-slate-200" /> {/* Skeleton za naslov. */}
-        <div className="mt-6 h-64 animate-pulse rounded-2xl bg-slate-100" /> {/* Skeleton za tabelu. */}
+      <main className="mx-auto max-w-6xl px-4 py-8">
+        <div className="h-10 w-56 animate-pulse rounded bg-slate-200" />
+        <div className="mt-6 h-64 animate-pulse rounded-2xl bg-slate-100" />
       </main>
     );
   }
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-8"> {/* Glavni container stranice. */}
-      <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between"> {/* Header sa naslovom i user badge-om. */}
+    <main className="mx-auto max-w-6xl px-4 py-8">
+      <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Users.</h1> {/* Naslov na engleskom. */}
-          <p className="mt-1 text-sm text-slate-600">
-            User list with search, filters, and sorting.
-          </p> {/* Opis na engleskom (traženo). */}
+          <h1 className="text-2xl font-semibold text-slate-900">Users.</h1>
+          <p className="mt-1 text-sm text-slate-600">User list with search, filters, and sorting.</p>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm"> {/* Kartica sa info o adminu. */}
-          <div className="text-sm font-semibold text-slate-900">{me?.name}.</div> {/* Ime admina. */}
-          <div className="text-xs text-slate-600">Administrator.</div> {/* Label (može i "Administrator." ostaje ok). */}
+        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+          <div className="text-sm font-semibold text-slate-900">{me?.name}.</div>
+          <div className="text-xs text-slate-600">Administrator.</div>
         </div>
       </header>
 
-      <section className="mt-6 grid gap-3 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-4"> {/* Filter bar. */}
+      <section className="mt-6 grid gap-3 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-4">
         <div className="md:col-span-2">
-          <label className="text-xs font-semibold text-slate-700">Search.</label> {/* Label na engleskom. */}
+          <label className="text-xs font-semibold text-slate-700">Search.</label>
           <input
-            value={search} // Controlled input: vrednost iz state-a.
-            onChange={(e) => setSearch(e.target.value)} // Update state na promenu input-a.
-            placeholder="Search by name or email." // Placeholder na engleskom.
-            className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400" // Tailwind stil.
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by name or email."
+            className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400"
           />
         </div>
 
         <div>
-          <label className="text-xs font-semibold text-slate-700">Role.</label> {/* Filter label na engleskom. */}
+          <label className="text-xs font-semibold text-slate-700">Role.</label>
           <select
-            value={roleFilter} // Controlled select: vrednost iz state-a.
-            onChange={(e) => setRoleFilter(e.target.value as any)} // Update role filter.
-            className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400" // Stil.
+            value={roleFilter}
+            onChange={(e) => setRoleFilter(e.target.value as any)}
+            className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400"
           >
-            <option value="all">All.</option> {/* Opcija za sve role. */}
-            <option value="admin">Admin.</option> {/* Admin opcija. */}
-            <option value="sales_manager">Sales manager.</option> {/* Sales manager opcija. */}
-            <option value="freelance_consultant">Freelancer.</option> {/* Freelancer opcija. */}
+            <option value="all">All.</option>
+            <option value="admin">Admin.</option>
+            <option value="sales_manager">Sales manager.</option>
+            <option value="freelance_consultant">Freelancer.</option>
           </select>
         </div>
 
         <div>
-          <label className="text-xs font-semibold text-slate-700">Status.</label> {/* Filter label na engleskom. */}
+          <label className="text-xs font-semibold text-slate-700">Status.</label>
           <select
-            value={statusFilter} // Controlled select.
-            onChange={(e) => setStatusFilter(e.target.value as any)} // Update status filter.
-            className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400" // Stil.
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as any)}
+            className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400"
           >
-            <option value="all">All.</option> {/* Sve. */}
-            <option value="active">Active.</option> {/* Aktivni. */}
-            <option value="inactive">Inactive.</option> {/* Neaktivni. */}
+            <option value="all">All.</option>
+            <option value="active">Active.</option>
+            <option value="inactive">Inactive.</option>
           </select>
         </div>
       </section>
 
-      <section className="mt-4 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm"> {/* Tabela wrapper. */}
-        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3"> {/* Header tabele. */}
+      <section className="mt-4 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
           <div className="text-sm font-semibold text-slate-900">
             Results: <span className="text-slate-600">{total}.</span>
-          </div> {/* Ukupan broj rezultata. */}
+          </div>
           <div className="text-xs text-slate-600">
             Page {page} / {totalPages}.
-          </div> {/* Pagination info. */}
+          </div>
         </div>
 
-        {error ? <div className="px-4 py-6 text-sm text-rose-700">{error}</div> : null} {/* Prikaz greške ako postoji. */}
+        {error ? <div className="px-4 py-6 text-sm text-rose-700">{error}</div> : null}
 
-        <div className="w-full overflow-x-auto"> {/* Omogućava horizontalni scroll na manjim ekranima. */}
-          <table className="w-full min-w-[720px]"> {/* Tabela sa minimalnom širinom. */}
-            <thead className="bg-slate-50"> {/* Zaglavlje tabele. */}
-              <tr className="text-left text-xs font-semibold text-slate-700"> {/* Red zaglavlja. */}
+        <div className="w-full overflow-x-auto">
+          {/* VAŽNO: unutar <table> ne sme da postoji {" "} ili bilo kakav tekst node */}
+          <table className="w-full min-w-[720px]">
+            <thead className="bg-slate-50">
+              <tr className="text-left text-xs font-semibold text-slate-700">
                 <th className="px-4 py-3">
-                  <button type="button" onClick={() => toggleSort("name")} className="inline-flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => toggleSort("name")}
+                    className="inline-flex items-center gap-2"
+                  >
                     Name <SortIcon col="name" />
-                  </button> {/* Klik menja sortiranje po name. */}
+                  </button>
                 </th>
 
                 <th className="px-4 py-3">
-                  <button type="button" onClick={() => toggleSort("email")} className="inline-flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => toggleSort("email")}
+                    className="inline-flex items-center gap-2"
+                  >
                     Email <SortIcon col="email" />
-                  </button> {/* Klik menja sortiranje po email. */}
+                  </button>
                 </th>
 
                 <th className="px-4 py-3">
-                  <button type="button" onClick={() => toggleSort("role")} className="inline-flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => toggleSort("role")}
+                    className="inline-flex items-center gap-2"
+                  >
                     Role <SortIcon col="role" />
-                  </button> {/* Klik menja sortiranje po role. */}
+                  </button>
                 </th>
 
                 <th className="px-4 py-3">
@@ -308,35 +311,46 @@ export default function AdminUsersPage() { // Glavna Admin stranica za upravljan
                     className="inline-flex items-center gap-2"
                   >
                     Status <SortIcon col="isActive" />
-                  </button> {/* Klik menja sortiranje po isActive. */}
+                  </button>
                 </th>
 
-                <th className="px-4 py-3">Manager ID.</th> {/* Kolona bez sortiranja. */}
+                <th className="px-4 py-3">Manager ID.</th>
               </tr>
             </thead>
 
-            <tbody className="divide-y divide-slate-100"> {/* Telo tabele sa separatorima. */}
-              {loading ? ( // Ako učitava, prikaži skeleton redove.
-                Array.from({ length: PAGE_SIZE }).map((_, i) => ( // Generišemo PAGE_SIZE skeleton redova.
+            <tbody className="divide-y divide-slate-100">
+              {loading ? (
+                Array.from({ length: PAGE_SIZE }).map((_, i) => (
                   <tr key={i}>
-                    <td className="px-4 py-4"><div className="h-4 w-40 animate-pulse rounded bg-slate-200" /></td> {/* Skeleton za name. */}
-                    <td className="px-4 py-4"><div className="h-4 w-56 animate-pulse rounded bg-slate-200" /></td> {/* Skeleton za email. */}
-                    <td className="px-4 py-4"><div className="h-6 w-24 animate-pulse rounded-full bg-slate-200" /></td> {/* Skeleton za role pill. */}
-                    <td className="px-4 py-4"><div className="h-6 w-24 animate-pulse rounded-full bg-slate-200" /></td> {/* Skeleton za status pill. */}
-                    <td className="px-4 py-4"><div className="h-4 w-16 animate-pulse rounded bg-slate-200" /></td> {/* Skeleton za managerId. */}
+                    <td className="px-4 py-4">
+                      <div className="h-4 w-40 animate-pulse rounded bg-slate-200" />
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="h-4 w-56 animate-pulse rounded bg-slate-200" />
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="h-6 w-24 animate-pulse rounded-full bg-slate-200" />
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="h-6 w-24 animate-pulse rounded-full bg-slate-200" />
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="h-4 w-16 animate-pulse rounded bg-slate-200" />
+                    </td>
                   </tr>
                 ))
-              ) : sortedRows.length === 0 ? ( // Ako nema rezultata...
+              ) : sortedRows.length === 0 ? (
                 <tr>
                   <td className="px-4 py-6 text-sm text-slate-600" colSpan={5}>
                     No results for the selected filters.
-                  </td> {/* Poruka na engleskom. */}
+                  </td>
                 </tr>
-              ) : ( // Inače, renderujemo stvarne redove.
-                sortedRows.map((u) => ( // Iteriramo kroz sortirane korisnike.
-                  <tr key={u.id} className="text-sm text-slate-900"> {/* Jedan red tabele. */}
-                    <td className="px-4 py-4 font-semibold">{u.name}.</td> {/* Ime korisnika. */}
-                    <td className="px-4 py-4 text-slate-700">{u.email}.</td> {/* Email korisnika. */}
+              ) : (
+                sortedRows.map((u) => (
+                  <tr key={u.id} className="text-sm text-slate-900">
+                    <td className="px-4 py-4 font-semibold">{u.name}.</td>
+                    <td className="px-4 py-4 text-slate-700">{u.email}.</td>
+
                     <td className="px-4 py-4">
                       <span
                         className={[
@@ -345,8 +359,9 @@ export default function AdminUsersPage() { // Glavna Admin stranica za upravljan
                         ].join(" ")}
                       >
                         {badgeRole(u.role)}
-                      </span> {/* Role badge sa bojom. */}
+                      </span>
                     </td>
+
                     <td className="px-4 py-4">
                       <span
                         className={[
@@ -355,9 +370,10 @@ export default function AdminUsersPage() { // Glavna Admin stranica za upravljan
                         ].join(" ")}
                       >
                         {u.isActive ? "Active." : "Inactive."}
-                      </span> {/* Status badge sa bojom. */}
+                      </span>
                     </td>
-                    <td className="px-4 py-4 text-slate-700">{u.managerId ?? "-"}.</td> {/* ManagerId ili "-" ako nema. */}
+
+                    <td className="px-4 py-4 text-slate-700">{u.managerId ?? "-"}.</td>
                   </tr>
                 ))
               )}
@@ -365,25 +381,25 @@ export default function AdminUsersPage() { // Glavna Admin stranica za upravljan
           </table>
         </div>
 
-        <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3"> {/* Footer tabele sa paginacijom. */}
+        <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3">
           <button
-            type="button" // Button element.
-            disabled={page <= 1 || loading} // Disable ako smo na prvoj strani ili se učitava.
-            onClick={() => setPage((p) => Math.max(1, p - 1))} // Prethodna strana.
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 transition disabled:opacity-50" // Stil.
+            type="button"
+            disabled={page <= 1 || loading}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 transition disabled:opacity-50"
           >
             Prev.
           </button>
 
           <div className="text-xs text-slate-600">
             Showing {sortedRows.length} of {total}.
-          </div> {/* Informacija koliko prikazujemo. */}
+          </div>
 
           <button
-            type="button" // Button element.
-            disabled={page >= totalPages || loading} // Disable ako smo na poslednjoj strani ili se učitava.
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))} // Sledeća strana.
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 transition disabled:opacity-50" // Stil.
+            type="button"
+            disabled={page >= totalPages || loading}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 transition disabled:opacity-50"
           >
             Next.
           </button>
