@@ -5,40 +5,100 @@ import { requireRole } from "@/src/server/auth/requireRole";
 import { clientCompanyUpdateSchema } from "@/src/server/validators/clientCompany";
 import { getClientCompanyById, updateClientCompany } from "@/src/server/services/clientCompanyService";
 
-export async function GET(req: NextRequest, ctx: { params: { id: string } }) {
+type Ctx =
+  | { params: { id?: string } }
+  | { params: Promise<{ id?: string }> };
+
+function parseIdFromString(raw: unknown) {
+  const s = Array.isArray(raw) ? String(raw[0] ?? "") : String(raw ?? "");
+  const cleaned = s.trim().replace(/\/+$/, "").split("?")[0];
+  const id = Number(cleaned);
+  return { raw: s, cleaned, id };
+}
+
+function parseIdFallback(req: NextRequest) {
+  // /api/client-companies/12 -> ["api","client-companies","12"]
+  const last = req.nextUrl.pathname.split("/").filter(Boolean).at(-1) ?? "";
+  return parseIdFromString(last);
+}
+
+export async function GET(req: NextRequest, context: Ctx) {
   try {
     const auth = await requireAuth();
-    const id = Number(ctx.params.id);
 
-    const company = await getClientCompanyById({ userId: auth.sub, role: auth.role }, id);
+    // ✅ Next sometimes gives params as Promise.
+    const params = await Promise.resolve((context as any).params);
+
+    const userId = Number((auth as any).sub ?? (auth as any).userId);
+    if (!Number.isInteger(userId) || userId <= 0) {
+      return NextResponse.json({ message: "Neispravan user id." }, { status: 401 });
+    }
+
+    // ✅ Read id from params, fallback to URL.
+    let parsed = parseIdFromString(params?.id);
+    if (!Number.isInteger(parsed.id) || parsed.id <= 0) {
+      parsed = parseIdFallback(req);
+    }
+
+    if (!Number.isInteger(parsed.id) || parsed.id <= 0) {
+      return NextResponse.json(
+        { message: "Neispravan ID.", debug: { fromParams: params?.id, ...parsed } },
+        { status: 400 }
+      );
+    }
+
+    const company = await getClientCompanyById(
+      { userId, role: (auth as any).role },
+      parsed.id
+    );
+
     return ok(company);
   } catch (e) {
     return handleError(e);
   }
 }
 
-export async function PATCH(req: NextRequest, ctx: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, context: Ctx) {
   try {
     const auth = await requireAuth();
-    requireRole(auth.role, ["admin", "sales_manager"]);
+    requireRole((auth as any).role, ["admin", "sales_manager"]);
 
-    const id = Number(ctx.params.id);
-    const body = await req.json();
+    const params = await Promise.resolve((context as any).params);
 
-    const parsed = clientCompanyUpdateSchema.safeParse(body);
-    if (!parsed.success) {
-      return NextResponse.json({ message: parsed.error.issues[0]?.message || "Validacija nije prošla." }, { status: 422 });
+    const userId = Number((auth as any).sub ?? (auth as any).userId);
+    if (!Number.isInteger(userId) || userId <= 0) {
+      return NextResponse.json({ message: "Neispravan user id." }, { status: 401 });
     }
 
-    // Sales manager ne sme da menja tuđe klijente.
-    if (auth.role === "sales_manager") {
-      const existing = await getClientCompanyById({ userId: auth.sub, role: auth.role }, id);
-      if (existing.salesManagerId !== auth.sub) {
+    let parsed = parseIdFromString(params?.id);
+    if (!Number.isInteger(parsed.id) || parsed.id <= 0) {
+      parsed = parseIdFallback(req);
+    }
+
+    if (!Number.isInteger(parsed.id) || parsed.id <= 0) {
+      return NextResponse.json(
+        { message: "Neispravan ID.", debug: { fromParams: params?.id, ...parsed } },
+        { status: 400 }
+      );
+    }
+
+    const body = await req.json();
+    const z = clientCompanyUpdateSchema.safeParse(body);
+    if (!z.success) {
+      return NextResponse.json(
+        { message: z.error.issues[0]?.message || "Validacija nije prošla." },
+        { status: 422 }
+      );
+    }
+
+    if ((auth as any).role === "sales_manager") {
+      const existing = await getClientCompanyById({ userId, role: (auth as any).role }, parsed.id);
+      if (existing.salesManagerId !== userId) {
         return NextResponse.json({ message: "Zabranjeno." }, { status: 403 });
       }
     }
 
-    const updated = await updateClientCompany(id, parsed.data);
+    const updated = await updateClientCompany(parsed.id, z.data);
     return ok(updated);
   } catch (e) {
     return handleError(e);
