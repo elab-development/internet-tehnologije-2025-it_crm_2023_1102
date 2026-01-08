@@ -1,0 +1,1 @@
+export type Role = "admin" | "sales_manager" | "freelance_consultant";
