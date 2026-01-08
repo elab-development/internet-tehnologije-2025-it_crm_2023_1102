@@ -241,24 +241,8 @@ async function main() {
     }
   }
 
-  // 8) Kratak “dokaz” da su veze tu: učitaj jednog SM-a sa svime.
-  const exampleSM = createdSMs[0];
+  // 8) Kratak “dokaz” da su veze tu
 
-  const snapshot = await prisma.user.findUnique({
-    where: { id: exampleSM.id },
-    include: {
-      freelancers: true,
-      managedClientCompanies: {
-        include: {
-          category: true,
-          contacts: true,
-          opportunities: true,
-        },
-      },
-      managedContacts: true,
-      managedOpportunities: true,
-    },
-  });
 
   console.log("SEED ZAVRŠEN.");
   console.log("Kredencijali (plain) za test:");
