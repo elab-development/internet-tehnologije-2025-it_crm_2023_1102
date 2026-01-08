@@ -1,0 +1,1 @@
+export type ClientCategory = { id: number; name: string; description?: string | null };
