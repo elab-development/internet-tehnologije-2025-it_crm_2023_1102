@@ -18,6 +18,7 @@ export function handleError(e: unknown) {
   const status = anyErr?.status ?? 500;
 
   // 500: uvek generična poruka.
+  console.log("Server error:", e);
   if (status === 500) return fail("Greška na serveru.", 500);
 
   // Standardizovane poruke.
