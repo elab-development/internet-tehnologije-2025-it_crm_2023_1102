@@ -14,7 +14,7 @@ until pg_isready -h "${DB_HOST:-db}" -p "${DB_PORT:-5432}" -U "${DB_USER:-postgr
 do
   sleep 1
 done
-echo "✅ Database is ready."
+echo "Database is ready."
 
 echo "▶ Starting Prisma Studio on http://localhost:5555 ..."
 exec npx prisma studio --hostname 0.0.0.0 --port 5555

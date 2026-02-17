@@ -14,7 +14,7 @@ until pg_isready -h "${DB_HOST:-db}" -p "${DB_PORT:-5432}" -U "${DB_USER:-postgr
 do
   sleep 1
 done
-echo "✅ Database is ready."
+echo "Database is ready."
 
 echo "▶ Resetting DB + running migrations + seed (prisma migrate reset --force)..."
 npx prisma migrate reset --force
