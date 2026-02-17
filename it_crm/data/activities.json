@@ -1,0 +1,31 @@
+{
+  "activities": [
+    {
+      "id": "0cf4ca72-388e-4c04-81c1-ce402757edb1",
+      "userId": 4,
+      "entityType": "clientCompany",
+      "entityId": 8,
+      "type": "call",
+      "description": "Call with the company manager",
+      "createdAt": "2026-02-17T13:09:40.994Z"
+    },
+    {
+      "id": "71a70bf9-7015-4d1b-a75d-8f232e96cfb1",
+      "userId": 4,
+      "entityType": "opportunity",
+      "entityId": 35,
+      "type": "call",
+      "description": "New Call with the manager",
+      "createdAt": "2026-02-17T13:09:06.762Z"
+    },
+    {
+      "id": "dd3cbdff-a0b7-4453-be93-08ce90de3e1f",
+      "userId": 4,
+      "entityType": "opportunity",
+      "entityId": 12,
+      "type": "call",
+      "description": "New activity",
+      "createdAt": "2026-02-17T13:00:19.061Z"
+    }
+  ]
+}

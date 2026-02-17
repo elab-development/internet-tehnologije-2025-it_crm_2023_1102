@@ -10,6 +10,17 @@ import type { ClientCompany } from "@/src/client/types/clientCompany";
 type ClientCompanyStatus = "lead" | "active" | "inactive" | "paused";
 type StatusFilter = "all" | ClientCompanyStatus;
 
+type Role = "admin" | "sales_manager" | "freelance_consultant";
+
+type FreelancerLite = {
+  id: number;
+  name: string;
+  email?: string;
+  role: Role;
+  isActive: boolean;
+  managerId: number;
+};
+
 function useDebounce<T>(value: T, delayMs = 350) {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
@@ -74,6 +85,11 @@ export default function SalesManagerClientCompaniesPage() {
     return tp <= 0 ? 1 : tp;
   }, [total]);
 
+  // Team freelancers for dropdown.
+  const [teamFreelancers, setTeamFreelancers] = useState<FreelancerLite[]>([]);
+  const [teamLoading, setTeamLoading] = useState(false);
+  const [teamError, setTeamError] = useState<string | null>(null);
+
   // Drawer.
   const [openId, setOpenId] = useState<number | null>(null);
   const [details, setDetails] = useState<ClientCompany | null>(null);
@@ -135,6 +151,50 @@ export default function SalesManagerClientCompaniesPage() {
     };
   }, [router]);
 
+  // Load team freelancers once auth is done.
+  useEffect(() => {
+    if (authLoading) return;
+    if (!me) return;
+
+    let cancelled = false;
+
+    (async () => {
+      setTeamLoading(true);
+      setTeamError(null);
+
+      try {
+        const res = await fetch(`/api/users/team${buildQuery({ page: 1, pageSize: 100 })}`, { method: "GET" });
+        if (!res.ok) {
+          const msg = await res.json().catch(() => null);
+          throw new Error(msg?.message || "Ne mogu da učitam freelancere tima.");
+        }
+
+        const json = await res.json();
+        const data = unwrap<{ items: FreelancerLite[] }>(json);
+        const items = Array.isArray(data?.items) ? data.items : [];
+
+        if (!cancelled) {
+          setTeamFreelancers(items);
+
+          // Default freelancer in create form if not set.
+          const firstId = items.length ? items[0].id : 0;
+          setCreateForm((f) => ({ ...f, freelanceConsultantId: f.freelanceConsultantId || firstId }));
+        }
+      } catch (e: any) {
+        if (!cancelled) {
+          setTeamFreelancers([]);
+          setTeamError(e?.message || "Greška pri učitavanju freelancera.");
+        }
+      } finally {
+        if (!cancelled) setTeamLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, me]);
+
   // Categories.
   useEffect(() => {
     if (authLoading) return;
@@ -154,7 +214,7 @@ export default function SalesManagerClientCompaniesPage() {
           setCategories(safe);
 
           const firstId = safe.length > 0 ? safe[0].id : 0;
-          setCreateForm((f) => ({ ...f, categoryId: firstId }));
+          setCreateForm((f) => ({ ...f, categoryId: f.categoryId || firstId }));
         }
       } catch {
         // ignore.
@@ -222,7 +282,7 @@ export default function SalesManagerClientCompaniesPage() {
     };
   }, [authLoading, me, page, dq, dCity, status]);
 
-  // Details fetch: GET /api/client-companies/[id].
+  // Details fetch.
   useEffect(() => {
     if (!openId) {
       setDetails(null);
@@ -238,7 +298,6 @@ export default function SalesManagerClientCompaniesPage() {
       setDetailsError(null);
 
       try {
-        console.log("Fetching details for ID:", openId);
         const res = await fetch(`/api/client-companies/${openId}`, { method: "GET" });
         if (!res.ok) {
           const msg = await res.json().catch(() => null);
@@ -309,7 +368,6 @@ export default function SalesManagerClientCompaniesPage() {
     }
   }
 
-  // PATCH: /api/client-companies/[id].
   async function saveEdits() {
     if (!openId) return;
 
@@ -345,6 +403,18 @@ export default function SalesManagerClientCompaniesPage() {
     }
   }
 
+  const selectedFreelancerNameCreate = useMemo(() => {
+    const id = Number(createForm.freelanceConsultantId);
+    const u = teamFreelancers.find((x) => x.id === id);
+    return u?.name ?? "";
+  }, [teamFreelancers, createForm.freelanceConsultantId]);
+
+  const selectedFreelancerNameEdit = useMemo(() => {
+    const id = Number(editForm.freelanceConsultantId ?? details?.freelanceConsultantId ?? 0);
+    const u = teamFreelancers.find((x) => x.id === id);
+    return u?.name ?? "";
+  }, [teamFreelancers, editForm.freelanceConsultantId, details?.freelanceConsultantId]);
+
   if (authLoading) {
     return (
       <main className="mx-auto max-w-6xl px-4 py-8">
@@ -360,7 +430,9 @@ export default function SalesManagerClientCompaniesPage() {
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
             <h1 className="text-2xl font-semibold text-slate-900">Client companies.</h1>
-            <p className="mt-1 text-sm text-slate-700">Upravljanje klijentima tima (pretraga, filteri, detalji, izmena).</p>
+            <p className="mt-1 text-sm text-slate-700">
+              Upravljanje klijentima tima (pretraga, filteri, detalji, izmena).
+            </p>
           </div>
 
           <div className="flex items-center gap-3">
@@ -477,12 +549,24 @@ export default function SalesManagerClientCompaniesPage() {
               {loading ? (
                 Array.from({ length: PAGE_SIZE }).map((_, i) => (
                   <tr key={i}>
-                    <td className="px-4 py-4"><div className="h-4 w-44 animate-pulse rounded bg-slate-200" /></td>
-                    <td className="px-4 py-4"><div className="h-4 w-28 animate-pulse rounded bg-slate-200" /></td>
-                    <td className="px-4 py-4"><div className="h-4 w-20 animate-pulse rounded bg-slate-200" /></td>
-                    <td className="px-4 py-4"><div className="h-4 w-24 animate-pulse rounded bg-slate-200" /></td>
-                    <td className="px-4 py-4"><div className="h-6 w-24 animate-pulse rounded-full bg-slate-200" /></td>
-                    <td className="px-4 py-4"><div className="h-4 w-28 animate-pulse rounded bg-slate-200" /></td>
+                    <td className="px-4 py-4">
+                      <div className="h-4 w-44 animate-pulse rounded bg-slate-200" />
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="h-4 w-28 animate-pulse rounded bg-slate-200" />
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="h-4 w-20 animate-pulse rounded bg-slate-200" />
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="h-6 w-24 animate-pulse rounded-full bg-slate-200" />
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="h-4 w-28 animate-pulse rounded bg-slate-200" />
+                    </td>
                   </tr>
                 ))
               ) : rows.length === 0 ? (
@@ -617,15 +701,26 @@ export default function SalesManagerClientCompaniesPage() {
                 </select>
               </Field>
 
-              <Field label="Freelancer consultant ID">
-                <input
-                  value={createForm.freelanceConsultantId ? String(createForm.freelanceConsultantId) : ""}
+              <Field label="Freelancer consultant">
+                <select
+                  value={String(createForm.freelanceConsultantId || "")}
                   onChange={(e) => setCreateForm((f) => ({ ...f, freelanceConsultantId: Number(e.target.value || 0) }))}
-                  placeholder="Unesi ID freelancera iz tvog tima."
-                  className="w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
-                />
+                  disabled={teamLoading || teamFreelancers.length === 0}
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400 disabled:opacity-50"
+                >
+                  <option value="">
+                    {teamLoading ? "Loading..." : teamFreelancers.length ? "Select freelancer." : "No freelancers."}
+                  </option>
+                  {teamFreelancers.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}.
+                    </option>
+                  ))}
+                </select>
+
                 <p className="mt-1 text-xs text-slate-500">
-                  Backend proverava da freelancer postoji, da je aktivan i da pripada tvom timu.
+                  Biraš freelancera iz svog tima{selectedFreelancerNameCreate ? `: ${selectedFreelancerNameCreate}.` : "."}
+                  {teamError ? ` ${teamError}` : ""}
                 </p>
               </Field>
             </div>
@@ -778,14 +873,29 @@ export default function SalesManagerClientCompaniesPage() {
                     </Field>
                   </div>
 
-                  <Field label="Freelancer consultant ID">
-                    <input
-                      value={String(editForm.freelanceConsultantId ?? details.freelanceConsultantId)}
-                      onChange={(e) => setEditForm((f) => ({ ...f, freelanceConsultantId: Number(e.target.value || 0) }))}
-                      className="w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
-                    />
+                  <Field label="Freelancer consultant">
+                    <select
+                      value={String(editForm.freelanceConsultantId ?? details.freelanceConsultantId ?? "")}
+                      onChange={(e) =>
+                        setEditForm((f) => ({ ...f, freelanceConsultantId: Number(e.target.value || 0) }))
+                      }
+                      disabled={teamLoading || teamFreelancers.length === 0}
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400 disabled:opacity-50"
+                    >
+                      <option value="">
+                        {teamLoading ? "Loading..." : teamFreelancers.length ? "Select freelancer." : "No freelancers."}
+                      </option>
+                      {teamFreelancers.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.name}.
+                        </option>
+                      ))}
+                    </select>
+
                     <p className="mt-1 text-xs text-slate-500">
-                      Backend validira da freelancer pripada tvom timu (managerId).
+                      Backend validira da freelancer pripada tvom timu (managerId)
+                      {selectedFreelancerNameEdit ? `: ${selectedFreelancerNameEdit}.` : "."}
+                      {teamError ? ` ${teamError}` : ""}
                     </p>
                   </Field>
 

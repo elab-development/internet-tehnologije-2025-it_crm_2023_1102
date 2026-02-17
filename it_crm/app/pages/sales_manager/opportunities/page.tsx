@@ -1,279 +1,545 @@
-"use client"; // Ovim kažemo Next.js-u da je ovo Client Component (radi u browser-u).
+"use client";
 
-import React, { useEffect, useMemo, useState } from "react"; // Uvozimo React i hook-ove koji nam trebaju.
-import { useRouter } from "next/navigation"; // Uvozimo router za navigaciju (redirect).
+import React, { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
-import type { Me } from "@/src/client/types/me"; // Tip za trenutno ulogovanog korisnika.
-import type { Opportunity } from "@/src/client/types/opportunity"; // Tip za Opportunity entitet (priliku).
+import type { Me } from "@/src/client/types/me";
+import type { Opportunity } from "@/src/client/types/opportunity";
 
-function useDebounce<T>(value: T, delayMs = 350) { // Debounce hook: odlaže promenu vrednosti da ne zovemo API prečesto.
-  const [debounced, setDebounced] = useState(value); // Čuvamo debounced vrednost u state-u.
-  useEffect(() => { // Effect se okida kad se value ili delayMs promene.
-    const t = setTimeout(() => setDebounced(value), delayMs); // Nakon delay-a postavljamo debounced vrednost.
-    return () => clearTimeout(t); // Čistimo timeout kad se effect re-run-uje ili komponenta unmount-uje.
-  }, [value, delayMs]); // Zavisnosti: kad se value ili delayMs promene, pokrećemo novi timer.
-  return debounced; // Vraćamo debounced vrednost.
+type Role = "admin" | "sales_manager" | "freelance_consultant";
+
+type FreelancerLite = {
+  id: number;
+  name: string;
+  email?: string;
+  role: Role;
+  isActive: boolean;
+  managerId: number;
+};
+
+type ContactLite = {
+  id: number;
+  name: string;
+  clientCompanyId: number;
+  salesManagerId: number;
+  freelanceConsultantId: number;
+  clientCompany?: { id: number; name: string } | null;
+};
+
+type ClientCompanyLite = {
+  id: number;
+  name: string;
+  salesManagerId: number;
+  freelanceConsultantId: number;
+};
+
+function useDebounce<T>(value: T, delayMs = 350) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(t);
+  }, [value, delayMs]);
+  return debounced;
 }
 
-function buildQuery(params: Record<string, string | number | boolean | undefined | null>) { // Helper za pravljenje query string-a.
-  const sp = new URLSearchParams(); // Kreiramo URLSearchParams objekat.
-  Object.entries(params).forEach(([k, v]) => { // Prolazimo kroz sve parametre.
-    if (v === undefined || v === null || v === "") return; // Preskačemo prazne vrednosti (da query bude čist).
-    sp.set(k, String(v)); // U query dodajemo key/value kao string.
-  }); // Zatvaramo forEach.
-  const qs = sp.toString(); // Pretvaramo u query string (npr. "page=1&status=open").
-  return qs ? `?${qs}` : ""; // Ako postoji nešto u qs, vraćamo sa "?", inače prazan string.
+function buildQuery(params: Record<string, string | number | boolean | undefined | null>) {
+  const sp = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v === undefined || v === null || v === "") return;
+    sp.set(k, String(v));
+  });
+  const qs = sp.toString();
+  return qs ? `?${qs}` : "";
 }
 
-// Napomena: usklađeno sa seed.js (stages i statuses). 
-const STAGES = ["prospecting", "discovery", "proposal", "negotiation", "won", "lost"]; // Dozvoljene faze prilike.
-const STATUSES = ["open", "closed"]; // Dozvoljeni statusi prilike.
+function unwrap<T>(json: any): T {
+  return (json?.data ?? json) as T;
+}
 
-export default function SalesManagerOpportunitiesPage() { // Glavna stranica za prikaz i upravljanje prilikama.
-  const router = useRouter(); // Router koristimo za redirekcije.
-  const PAGE_SIZE = 5; // Koliko redova prikazujemo po strani.
+function dateInputToIso(v: string): string | null {
+  if (!v) return null;
+  return new Date(`${v}T00:00:00.000Z`).toISOString();
+}
 
-  const [me, setMe] = useState<Me | null>(null); // State za trenutno ulogovanog korisnika.
-  const [authLoading, setAuthLoading] = useState(true); // State koji govori da li još proveravamo autentifikaciju.
+function isoToDateInput(v: string | null | undefined): string {
+  if (!v) return "";
+  return String(v).slice(0, 10);
+}
 
-  const [rows, setRows] = useState<Opportunity[]>([]); // Lista opportunity-ja koja se prikazuje u tabeli.
-  const [total, setTotal] = useState(0); // Ukupan broj opportunity-ja (za paginaciju).
+function CardShell({ children }: { children: React.ReactNode }) {
+  return <div className="rounded-3xl border border-slate-200 bg-white shadow-sm">{children}</div>;
+}
 
-  const [page, setPage] = useState(1); // Trenutna stranica paginacije.
+const STAGES = ["prospecting", "discovery", "proposal", "negotiation", "won", "lost"];
+const STATUSES = ["open", "closed"];
 
-  const [q, setQ] = useState(""); // Search tekst (unos).
-  const dq = useDebounce(q, 350); // Debounced search tekst (da ne “spamujemo” API).
+export default function SalesManagerOpportunitiesPage() {
+  const router = useRouter();
+  const PAGE_SIZE = 5;
 
-  const [stage, setStage] = useState<string>("all"); // Filter za stage (default "all").
-  const [status, setStatus] = useState<string>("all"); // Filter za status (default "all").
+  const [me, setMe] = useState<Me | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
-  const [loading, setLoading] = useState(true); // Da li se lista trenutno učitava.
-  const [error, setError] = useState<string | null>(null); // Tekst greške ako API poziv padne.
+  const [rows, setRows] = useState<Opportunity[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
 
-  const totalPages = useMemo(() => { // Računamo total pages iz total i PAGE_SIZE.
-    const tp = Math.ceil(total / PAGE_SIZE); // Ukupno stranica = ceil(total / pageSize).
-    return tp <= 0 ? 1 : tp; // Minimum je 1 stranica (da UI ne pukne).
-  }, [total]); // Ponovo računamo kad se total promeni.
+  const [q, setQ] = useState("");
+  const dq = useDebounce(q, 350);
 
-  // Drawer (detalji).
-  const [openId, setOpenId] = useState<number | null>(null); // ID opportunity-ja koji je otvoren u drawer-u.
-  const [details, setDetails] = useState<Opportunity | null>(null); // Detalji izabrane prilike.
-  const [detailsLoading, setDetailsLoading] = useState(false); // Da li se detalji trenutno učitavaju.
-  const [detailsError, setDetailsError] = useState<string | null>(null); // Greška pri učitavanju detalja.
+  const [stage, setStage] = useState<string>("all");
+  const [status, setStatus] = useState<string>("all");
 
-  const [saving, setSaving] = useState(false); // Da li se trenutno čuvaju izmene (PATCH).
-  const [editForm, setEditForm] = useState<Partial<Opportunity>>({}); // Edit forma (lokalna kopija vrednosti).
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Guard (RBAC) — proverimo /api/auth/me i ulogu.
-  useEffect(() => { // Effect koji radi odmah pri mount-u (i kad se router promeni).
-    let cancelled = false; // Flag da sprečimo setState ako se komponenta unmount-uje.
+  const totalPages = useMemo(() => {
+    const tp = Math.ceil(total / PAGE_SIZE);
+    return tp <= 0 ? 1 : tp;
+  }, [total, PAGE_SIZE]);
 
-    (async () => { // IIFE async funkcija.
-      try { // Try blok za fetch.
-        const res = await fetch("/api/auth/me"); // Pozivamo endpoint koji vraća trenutno ulogovanog korisnika.
-        if (!res.ok) { // Ako nije 2xx.
-          router.push("/pages/auth/login"); // Prebacujemo na login.
-          return; // Prekidamo dalje.
+  // Drawer.
+  const [openId, setOpenId] = useState<number | null>(null);
+  const [details, setDetails] = useState<Opportunity | null>(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [detailsError, setDetailsError] = useState<string | null>(null);
+
+  const [saving, setSaving] = useState(false);
+  const [editForm, setEditForm] = useState<Partial<Opportunity>>({});
+
+  // Create modal.
+  const [showCreate, setShowCreate] = useState(false);
+  const [creating, setCreating] = useState(false);
+
+  const [teamFreelancers, setTeamFreelancers] = useState<FreelancerLite[]>([]);
+  const [contacts, setContacts] = useState<ContactLite[]>([]);
+  const [companies, setCompanies] = useState<ClientCompanyLite[]>([]);
+  const [picklistsLoading, setPicklistsLoading] = useState(false);
+  const [picklistsError, setPicklistsError] = useState<string | null>(null);
+
+  const [createForm, setCreateForm] = useState({
+    title: "",
+    description: "",
+    stage: "prospecting",
+    status: "open",
+    estimatedValue: 1000,
+    currency: "EUR",
+    probability: 0.5,
+    expectedCloseDate: "" as string, // YYYY-MM-DD ili "".
+    freelanceConsultantId: 0,
+    contactId: 0,
+    clientCompanyId: null as number | null,
+  });
+
+  const filteredContacts = useMemo(() => {
+    const fcId = Number(createForm.freelanceConsultantId);
+    if (!fcId) return [];
+    return contacts.filter((c) => Number(c.freelanceConsultantId) === fcId);
+  }, [contacts, createForm.freelanceConsultantId]);
+
+  const filteredCompanies = useMemo(() => {
+    const fcId = Number(createForm.freelanceConsultantId);
+    if (!fcId) return [];
+    return companies.filter((c) => Number(c.freelanceConsultantId) === fcId);
+  }, [companies, createForm.freelanceConsultantId]);
+
+  const selectedContact = useMemo(() => {
+    const id = Number(createForm.contactId);
+    if (!id) return null;
+    return filteredContacts.find((c) => c.id === id) ?? null;
+  }, [filteredContacts, createForm.contactId]);
+
+  // Guard.
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch("/api/auth/me", { method: "GET" });
+        if (!res.ok) {
+          router.push("/pages/auth/login");
+          return;
         }
 
-        const data = (await res.json()) as Me; // Parsiramo JSON u Me tip.
+        const json = await res.json();
+        const data = unwrap<Me>(json);
 
-        if (!data || data.role !== "sales_manager") { // Ako korisnik ne postoji ili nije sales_manager.
-          if (data?.role) router.push(`/pages/${data.role}/home`); // Ako ima ulogu, vodi na njegov home.
-          else router.push("/pages/auth/login"); // Ako nema ulogu, vodi na login.
-          return; // Prekidamo.
+        if (!data || data.role !== "sales_manager") {
+          if (data?.role) router.push(`/pages/${data.role}/home`);
+          else router.push("/pages/auth/login");
+          return;
         }
 
-        if (!cancelled) setMe(data); // Ako nije otkazano, upisujemo user-a u state.
-      } catch { // Ako fetch/parse pukne.
-        router.push("/pages/auth/login"); // Idemo na login.
-      } finally { // Uvek.
-        if (!cancelled) setAuthLoading(false); // Gasimo auth loading.
+        if (!cancelled) setMe(data);
+      } catch {
+        router.push("/pages/auth/login");
+      } finally {
+        if (!cancelled) setAuthLoading(false);
       }
-    })(); // Pozivamo IIFE.
+    })();
 
-    return () => { // Cleanup funkcija effect-a.
-      cancelled = true; // Obeležavamo da ne smemo više da setujemo state.
+    return () => {
+      cancelled = true;
     };
-  }, [router]); // Zavisnost je router (obično stabilno, ali OK).
+  }, [router]);
 
-  // Reset pagination kada se filteri promene.
-  useEffect(() => { // Kad se search/stage/status promene, vraćamo page na 1.
-    setPage(1); // Reset page.
-  }, [dq, stage, status]); // Zavisnosti: debounced search i filteri.
+  // Reset pagination on filters.
+  useEffect(() => {
+    setPage(1);
+  }, [dq, stage, status]);
 
-  // Fetch list (GET /api/opportunities).
-  useEffect(() => { // Effect koji učitava listu.
-    if (authLoading) return; // Ako još traje auth, ne radimo ništa.
-    if (!me) return; // Ako nema user-a, ne učitavamo.
+  async function fetchList(targetPage: number) {
+    const qs = buildQuery({
+      page: targetPage,
+      pageSize: PAGE_SIZE,
+      q: dq || undefined,
+      stage: stage === "all" ? undefined : stage,
+      status: status === "all" ? undefined : status,
+    });
 
-    let cancelled = false; // Flag za cleanup.
+    const res = await fetch(`/api/opportunities${qs}`, { method: "GET" });
+    if (!res.ok) {
+      const msg = await res.json().catch(() => null);
+      throw new Error(msg?.message || "Ne mogu da učitam opportunities.");
+    }
 
-    (async () => { // Async IIFE.
-      setLoading(true); // Kažemo UI-u da se učitava.
-      setError(null); // Resetujemo grešku.
+    const json = await res.json();
+    const data = unwrap<{ items: Opportunity[]; total: number }>(json);
 
-      try { // Try fetch.
-        const qs = buildQuery({ // Gradimo query string.
-          page, // Trenutna stranica.
-          pageSize: PAGE_SIZE, // Veličina strane.
-          q: dq || undefined, // Search query, samo ako nije prazno.
-          stage: stage === "all" ? undefined : stage, // Stage filter, samo ako nije "all".
-          status: status === "all" ? undefined : status, // Status filter, samo ako nije "all".
-        }); // Kraj buildQuery parametara.
+    setRows(Array.isArray(data?.items) ? data.items : []);
+    setTotal(typeof data?.total === "number" ? data.total : 0);
+  }
 
-        const res = await fetch(`/api/opportunities${qs}`, { method: "GET" }); // Pozivamo API za listu.
-        if (!res.ok) throw new Error("Unable to load opportunities."); // Ako nije OK, bacamo grešku.
+  // Fetch list.
+  useEffect(() => {
+    if (authLoading) return;
+    if (!me) return;
 
-        const json = await res.json(); // Parsiramo JSON.
-        const items: Opportunity[] = json?.items ?? []; // Uzmi items ili prazno.
-        const totalValue: number = json?.total ?? 0; // Uzmi total ili 0.
+    let cancelled = false;
 
-        if (!cancelled) { // Ako nije otkazano.
-          setRows(Array.isArray(items) ? items : []); // Setujemo rows (samo ako je niz).
-          setTotal(typeof totalValue === "number" ? totalValue : 0); // Setujemo total (samo ako je broj).
+    (async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        await fetchList(page);
+      } catch (e: any) {
+        if (!cancelled) {
+          setRows([]);
+          setTotal(0);
+          setError(e?.message || "Došlo je do greške.");
         }
-      } catch (e: any) { // Catch za greške.
-        if (!cancelled) { // Ako nije otkazano.
-          setRows([]); // Praznimo listu.
-          setTotal(0); // Reset total.
-          setError(e?.message || "Something went wrong."); // Setujemo poruku greške.
-        }
-      } finally { // Uvek.
-        if (!cancelled) setLoading(false); // Gasimo loading.
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    })(); // Poziv IIFE.
+    })();
 
-    return () => { // Cleanup.
-      cancelled = true; // Sprečavamo setState posle unmount-a.
+    return () => {
+      cancelled = true;
     };
-  }, [authLoading, me, page, dq, stage, status]); // Kad se bilo šta od ovoga promeni, refetch.
+  }, [authLoading, me, page, dq, stage, status]);
 
-  // Details fetch (GET /api/opportunities/[id]).
-  useEffect(() => { // Effect za učitavanje detalja kad se openId promeni.
-    if (!openId) { // Ako ništa nije otvoreno.
-      setDetails(null); // Resetujemo details.
-      setDetailsError(null); // Resetujemo error.
-      setEditForm({}); // Resetujemo formu.
-      return; // Prekidamo.
+  async function loadPicklists() {
+    if (!me) return;
+
+    setPicklistsLoading(true);
+    setPicklistsError(null);
+
+    try {
+      // 1) Freelanceri iz tima.
+      const fRes = await fetch("/api/users/team?page=1&pageSize=50", { method: "GET" });
+      if (!fRes.ok) {
+        const msg = await fRes.json().catch(() => null);
+        throw new Error(msg?.message || "Ne mogu da učitam freelancere tima.");
+      }
+
+      const fJson = await fRes.json();
+      const fData = unwrap<{ items: FreelancerLite[] }>(fJson);
+      const team = Array.isArray(fData?.items) ? fData.items : [];
+
+      setTeamFreelancers(team);
+
+      const firstFcId = team.length ? team[0].id : 0;
+      setCreateForm((prev) => ({
+        ...prev,
+        freelanceConsultantId: prev.freelanceConsultantId || firstFcId,
+      }));
+
+      // 2) Kontakti (scoped).
+      const cRes = await fetch(`/api/contacts${buildQuery({ page: 1, pageSize: 200 })}`, { method: "GET" });
+      if (cRes.ok) {
+        const cJson = await cRes.json();
+        const cData = unwrap<any>(cJson);
+        const items = Array.isArray(cData)
+          ? cData
+          : Array.isArray(cData?.items)
+            ? cData.items
+            : [];
+        setContacts(items as ContactLite[]);
+      } else {
+        setContacts([]);
+      }
+
+      // 3) Client companies (scoped).
+      const ccRes = await fetch(`/api/client-companies${buildQuery({ page: 1, pageSize: 200 })}`, { method: "GET" });
+      if (ccRes.ok) {
+        const ccJson = await ccRes.json();
+        const ccData = unwrap<any>(ccJson);
+        const items = Array.isArray(ccData)
+          ? ccData
+          : Array.isArray(ccData?.items)
+            ? ccData.items
+            : [];
+
+        const slim = (items as any[]).map((x) => ({
+          id: Number(x.id),
+          name: String(x.name ?? ""),
+          salesManagerId: Number(x.salesManagerId),
+          freelanceConsultantId: Number(x.freelanceConsultantId),
+        })) as ClientCompanyLite[];
+
+        setCompanies(slim);
+      } else {
+        setCompanies([]);
+      }
+    } catch (e: any) {
+      setPicklistsError(e?.message || "Ne mogu da učitam liste (freelanceri/kontakti/kompanije).");
+    } finally {
+      setPicklistsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!showCreate) return;
+    if (!me) return;
+
+    void loadPicklists();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showCreate, me]);
+
+  // Details fetch.
+  useEffect(() => {
+    if (!openId) {
+      setDetails(null);
+      setDetailsError(null);
+      setEditForm({});
+      return;
     }
 
-    let cancelled = false; // Cleanup flag.
+    let cancelled = false;
 
-    (async () => { // Async IIFE.
-      setDetailsLoading(true); // Uključujemo loading za detalje.
-      setDetailsError(null); // Reset greške za detalje.
+    (async () => {
+      setDetailsLoading(true);
+      setDetailsError(null);
 
-      try { // Try fetch.
-        const res = await fetch(`/api/opportunities/${openId}`, { method: "GET" }); // Pozivamo API za detalje.
-        if (!res.ok) throw new Error("Unable to load opportunity details."); // Ako nije OK, bacamo grešku.
-
-        const json = await res.json(); // Parsiramo detalje.
-        if (!cancelled) { // Ako nije otkazano.
-          setDetails(json as Opportunity); // Postavljamo details.
-          setEditForm({ // Popunjavamo edit formu (kontrolisana forma).
-            title: json?.title, // Naslov.
-            description: json?.description ?? "", // Opis (fallback na "").
-            stage: json?.stage, // Stage.
-            status: json?.status, // Status.
-            estimatedValue: json?.estimatedValue, // Procena vrednosti.
-            currency: json?.currency, // Valuta.
-            probability: json?.probability, // Verovatnoća.
-            expectedCloseDate: json?.expectedCloseDate ?? null, // Datum zatvaranja (nullable).
-            clientCompanyId: json?.clientCompanyId ?? null, // ID klijenta (nullable).
-          }); // Kraj setEditForm.
+      try {
+        const res = await fetch(`/api/opportunities/${openId}`, { method: "GET" });
+        if (!res.ok) {
+          const msg = await res.json().catch(() => null);
+          throw new Error(msg?.message || "Ne mogu da učitam detalje opportunity-ja.");
         }
-      } catch (e: any) { // Catch.
-        if (!cancelled) setDetailsError(e?.message || "Error."); // Prikazujemo grešku.
-      } finally { // Uvek.
-        if (!cancelled) setDetailsLoading(false); // Gasimo loading.
-      }
-    })(); // Poziv IIFE.
 
-    return () => { // Cleanup.
-      cancelled = true; // Sprečavamo setState posle unmount-a.
+        const json = await res.json();
+        const opp = unwrap<Opportunity>(json);
+
+        if (!cancelled) {
+          setDetails(opp);
+          setEditForm({
+            title: opp?.title,
+            description: opp?.description ?? "",
+            stage: opp?.stage,
+            status: opp?.status,
+            estimatedValue: opp?.estimatedValue,
+            currency: opp?.currency,
+            probability: opp?.probability,
+            // U formi držimo YYYY-MM-DD radi <input type="date">.
+            expectedCloseDate: opp?.expectedCloseDate ? (isoToDateInput(opp.expectedCloseDate) as any) : (null as any),
+            clientCompanyId: (opp?.clientCompanyId ?? null) as any,
+          });
+        }
+      } catch (e: any) {
+        if (!cancelled) setDetailsError(e?.message || "Greška.");
+      } finally {
+        if (!cancelled) setDetailsLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
     };
-  }, [openId]); // Kad openId promeni, učitavamo drugi zapis.
+  }, [openId]);
 
-  async function patchOpportunity(id: number, payload: any) { // Helper za PATCH poziv.
-    const res = await fetch(`/api/opportunities/${id}`, { // Pozivamo PATCH endpoint.
-      method: "PATCH", // HTTP metoda.
-      headers: { "Content-Type": "application/json" }, // Šaljemo JSON.
-      body: JSON.stringify(payload), // Payload pretvaramo u JSON string.
-    }); // Kraj fetch.
+  async function patchOpportunity(id: number, payload: any) {
+    const res = await fetch(`/api/opportunities/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
 
-    if (!res.ok) { // Ako PATCH nije uspeo.
-      const msg = await res.json().catch(() => null); // Pokušamo da izvučemo message.
-      throw new Error(msg?.message || "Update failed."); // Bacamo grešku.
+    if (!res.ok) {
+      const msg = await res.json().catch(() => null);
+      throw new Error(msg?.message || "Izmena nije uspela.");
     }
 
-    return (await res.json()) as Opportunity; // Vraćamo updated objekat.
+    const json = await res.json();
+    return unwrap<Opportunity>(json);
   }
 
-  async function onQuickStage(id: number, next: string) { // Brza izmena stage-a direktno u tabeli.
-    const prev = rows; // Čuvamo prethodnu listu za rollback.
-    setRows((r) => r.map((x) => (x.id === id ? { ...x, stage: next } : x))); // Optimistički ažuriramo UI.
+  async function onQuickStage(id: number, next: string) {
+    const prev = rows;
+    setRows((r) => r.map((x) => (x.id === id ? { ...x, stage: next } : x)));
 
-    try { // Pokušamo da snimimo na backend.
-      await patchOpportunity(id, { stage: next }); // PATCH stage.
-    } catch (e: any) { // Ako pukne.
-      setRows(prev); // Vraćamo staru listu.
-      alert(e?.message || "Error."); // Prikazujemo poruku.
-    }
-  }
-
-  async function onQuickStatus(id: number, next: string) { // Brza izmena status-a direktno u tabeli.
-    const prev = rows; // Čuvamo staru listu.
-    setRows((r) => r.map((x) => (x.id === id ? { ...x, status: next } : x))); // Optimistički update.
-
-    try { // Pokušamo da snimimo.
-      await patchOpportunity(id, { status: next }); // PATCH status.
-    } catch (e: any) { // Ako pukne.
-      setRows(prev); // Rollback.
-      alert(e?.message || "Error."); // Alert poruka.
+    try {
+      await patchOpportunity(id, { stage: next });
+    } catch (e: any) {
+      setRows(prev);
+      alert(e?.message || "Greška.");
     }
   }
 
-  async function saveEdits() { // Snimanje izmena iz drawer-a (edit forma).
-    if (!openId) return; // Ako nema openId, nema šta da snimamo.
+  async function onQuickStatus(id: number, next: string) {
+    const prev = rows;
+    setRows((r) => r.map((x) => (x.id === id ? { ...x, status: next } : x)));
 
-    setSaving(true); // Uključujemo saving state.
-    try { // Try.
-      const payload = { // Sklapamo payload i normalizujemo tipove.
-        ...editForm, // Sve iz forme.
-        estimatedValue: editForm.estimatedValue !== undefined ? Number(editForm.estimatedValue) : undefined, // Osiguramo broj.
-        probability: editForm.probability !== undefined ? Number(editForm.probability) : undefined, // Osiguramo broj.
-        clientCompanyId: // clientCompanyId može biti null ili broj ili undefined.
-          editForm.clientCompanyId === null
-            ? null
-            : editForm.clientCompanyId !== undefined
-              ? Number(editForm.clientCompanyId)
-              : undefined,
-        expectedCloseDate: // expectedCloseDate: string ili null ili undefined.
-          editForm.expectedCloseDate !== undefined
-            ? (editForm.expectedCloseDate ? String(editForm.expectedCloseDate) : null)
-            : undefined,
-      }; // Kraj payload.
+    try {
+      await patchOpportunity(id, { status: next });
+    } catch (e: any) {
+      setRows(prev);
+      alert(e?.message || "Greška.");
+    }
+  }
 
-      const updated = await patchOpportunity(openId, payload); // Snimamo na backend.
-      setDetails(updated); // Ažuriramo details state.
+  async function saveEdits() {
+    if (!openId) return;
 
-      // Refresh list for visible changes.
-      const idx = rows.findIndex((r) => r.id === updated.id); // Nalazimo red u tabeli.
-      if (idx >= 0) { // Ako postoji.
-        const clone = [...rows]; // Kopiramo niz (immutability).
-        clone[idx] = { ...clone[idx], ...updated }; // Merge-ujemo promene.
-        setRows(clone); // Postavljamo novi niz.
+    setSaving(true);
+    try {
+      const payload = {
+        ...editForm,
+        estimatedValue: editForm.estimatedValue !== undefined ? Number(editForm.estimatedValue) : undefined,
+        probability: editForm.probability !== undefined ? Number(editForm.probability) : undefined,
+        // Očekuje ISO datetime na backendu.
+        expectedCloseDate:
+          editForm.expectedCloseDate !== undefined ? dateInputToIso(String(editForm.expectedCloseDate || "")) : undefined,
+        clientCompanyId:
+          editForm.clientCompanyId === undefined
+            ? undefined
+            : (editForm.clientCompanyId as any) === null
+              ? null
+              : Number(editForm.clientCompanyId as any),
+      };
+
+      const updated = await patchOpportunity(openId, payload);
+      setDetails(updated);
+      await fetchList(page);
+    } catch (e: any) {
+      alert(e?.message || "Greška.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function onCreateFreelancerChange(nextId: number) {
+    setCreateForm((f) => ({
+      ...f,
+      freelanceConsultantId: nextId,
+      contactId: 0,
+      clientCompanyId: null,
+    }));
+  }
+
+  function onCreateContactChange(nextContactId: number) {
+    const c = filteredContacts.find((x) => x.id === nextContactId) ?? null;
+
+    setCreateForm((f) => ({
+      ...f,
+      contactId: nextContactId,
+      clientCompanyId: c ? Number(c.clientCompanyId) : null,
+    }));
+  }
+
+  async function createOpportunity() {
+    if (!me) return;
+
+    const title = createForm.title.trim();
+    if (!title) {
+      alert("Naslov je obavezan.");
+      return;
+    }
+    if (!createForm.freelanceConsultantId) {
+      alert("Izaberi freelancera.");
+      return;
+    }
+    if (!createForm.contactId) {
+      alert("Izaberi kontakt.");
+      return;
+    }
+
+    const ev = Number(createForm.estimatedValue);
+    if (!Number.isFinite(ev) || ev < 0) {
+      alert("Estimated value mora biti broj >= 0.");
+      return;
+    }
+
+    const prob = Number(createForm.probability);
+    if (!Number.isFinite(prob) || prob < 0 || prob > 1) {
+      alert("Probability mora biti u opsegu 0..1.");
+      return;
+    }
+
+    setCreating(true);
+    try {
+      const res = await fetch("/api/opportunities", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          description: createForm.description?.trim() ? createForm.description.trim() : null,
+          stage: createForm.stage,
+          status: createForm.status,
+          estimatedValue: ev,
+          currency: createForm.currency,
+          probability: prob,
+          // Očekuje ISO datetime na backendu.
+          expectedCloseDate: dateInputToIso(createForm.expectedCloseDate),
+          contactId: Number(createForm.contactId),
+          salesManagerId: Number(me.id),
+          freelanceConsultantId: Number(createForm.freelanceConsultantId),
+          clientCompanyId: createForm.clientCompanyId === null ? null : Number(createForm.clientCompanyId),
+        }),
+      });
+
+      if (!res.ok) {
+        const msg = await res.json().catch(() => null);
+        throw new Error(msg?.message || "Kreiranje nije uspelo.");
       }
-    } catch (e: any) { // Catch.
-      alert(e?.message || "Error."); // Alert poruka.
-    } finally { // Uvek.
-      setSaving(false); // Gasimo saving.
+
+      const json = await res.json();
+      unwrap<Opportunity>(json);
+
+      setShowCreate(false);
+      setCreateForm((f) => ({
+        ...f,
+        title: "",
+        description: "",
+        estimatedValue: 1000,
+        probability: 0.5,
+        expectedCloseDate: "",
+        contactId: 0,
+        clientCompanyId: null,
+      }));
+
+      setPage(1);
+      await fetchList(1);
+    } catch (e: any) {
+      alert(e?.message || "Greška.");
+    } finally {
+      setCreating(false);
     }
   }
 
-  if (authLoading) { // Ako se auth još učitava.
-    return ( // Prikazujemo skeleton.
+  if (authLoading) {
+    return (
       <main className="mx-auto max-w-6xl px-4 py-8">
         <div className="h-10 w-56 animate-pulse rounded bg-slate-200" />
         <div className="mt-6 h-64 animate-pulse rounded-2xl bg-slate-100" />
@@ -281,83 +547,115 @@ export default function SalesManagerOpportunitiesPage() { // Glavna stranica za 
     );
   }
 
-  return ( // Glavni UI.
+  return (
     <main className="mx-auto max-w-6xl px-4 py-8">
-      {/* Header card */}
       <div className="rounded-3xl border border-slate-200 bg-gradient-to-r from-cyan-50 via-fuchsia-50 to-yellow-50 p-6 shadow-sm">
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
             <h1 className="text-2xl font-semibold text-slate-900">Opportunities.</h1>
-            <p className="mt-1 text-sm text-slate-700">
-              Team opportunities overview with quick stage and status updates.
-            </p>
+            <p className="mt-1 text-sm text-slate-700">Team opportunities overview with quick stage and status updates.</p>
           </div>
 
-          <button
-            type="button"
-            disabled
-            className="rounded-2xl bg-slate-900/40 px-4 py-3 text-sm font-semibold text-white"
-            title="Opportunity creation requires a /api/contacts list route to select contactId."
-          >
-            + New opportunity (soon).
-          </button>
+          <div className="flex items-center gap-3">
+            <div className="rounded-2xl border border-slate-200 bg-white/80 px-4 py-3 backdrop-blur">
+              <div className="text-sm font-semibold text-slate-900">{me?.name}.</div>
+              <div className="text-xs text-slate-600">Sales menadžer.</div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowCreate(true)}
+              className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+            >
+              + New opportunity.
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Filters */}
-      <section className="mt-6 grid gap-3 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-4">
-        <div className="md:col-span-2">
-          <label className="text-xs font-semibold text-slate-700">Search (title).</label>
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search by title."
-            className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
-          />
-        </div>
+      <div className="mt-6 grid gap-3 md:grid-cols-4">
+        <CardShell>
+          <div className="p-4">
+            <div className="text-xs font-semibold text-slate-700">Search.</div>
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search by title."
+              className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
+            />
+          </div>
+        </CardShell>
 
-        <div>
-          <label className="text-xs font-semibold text-slate-700">Stage.</label>
-          <select
-            value={stage}
-            onChange={(e) => setStage(e.target.value)}
-            className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
-          >
-            <option value="all">All.</option>
-            {STAGES.map((s) => (
-              <option key={s} value={s}>
-                {s}.
-              </option>
-            ))}
-          </select>
-        </div>
+        <CardShell>
+          <div className="p-4">
+            <div className="text-xs font-semibold text-slate-700">Stage.</div>
+            <select
+              value={stage}
+              onChange={(e) => setStage(e.target.value)}
+              className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
+            >
+              <option value="all">All.</option>
+              {STAGES.map((s) => (
+                <option key={s} value={s}>
+                  {s}.
+                </option>
+              ))}
+            </select>
+          </div>
+        </CardShell>
 
-        <div>
-          <label className="text-xs font-semibold text-slate-700">Status.</label>
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
-          >
-            <option value="all">All.</option>
-            {STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {s}.
-              </option>
-            ))}
-          </select>
-        </div>
-      </section>
+        <CardShell>
+          <div className="p-4">
+            <div className="text-xs font-semibold text-slate-700">Status.</div>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
+            >
+              <option value="all">All.</option>
+              {STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {s}.
+                </option>
+              ))}
+            </select>
+          </div>
+        </CardShell>
 
-      {/* Table */}
-      <section className="mt-4 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+        <CardShell>
+          <div className="p-4">
+            <div className="text-xs font-semibold text-slate-700">Pagination.</div>
+            <div className="mt-2 flex items-center justify-between">
+              <button
+                type="button"
+                disabled={page <= 1 || loading}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold transition disabled:opacity-50"
+              >
+                Prev.
+              </button>
+              <div className="text-xs text-slate-600">
+                Page {page}/{totalPages}.
+              </div>
+              <button
+                type="button"
+                disabled={page >= totalPages || loading}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold transition disabled:opacity-50"
+              >
+                Next.
+              </button>
+            </div>
+          </div>
+        </CardShell>
+      </div>
+
+      <div className="mt-4 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
           <div className="text-sm font-semibold text-slate-900">
             Results: <span className="text-slate-600">{total}.</span>
           </div>
-          <div className="text-xs text-slate-600">
-            Page {page}/{Math.max(1, totalPages)}.
-          </div>
+          <div className="text-xs text-slate-600">Click title to open details.</div>
         </div>
 
         {error ? <div className="px-4 py-6 text-sm text-rose-700">{error}</div> : null}
@@ -406,8 +704,8 @@ export default function SalesManagerOpportunitiesPage() { // Glavna stranica za 
                       {o.title}.
                     </td>
 
-                    <td className="px-4 py-4 text-slate-700">{o.contact?.name ?? `#${o.contactId}`}.</td>
-                    <td className="px-4 py-4 text-slate-700">{o.clientCompany?.name ?? "-"}.</td>
+                    <td className="px-4 py-4 text-slate-700">{(o.contact?.name ?? `#${o.contactId}`) + "."}</td>
+                    <td className="px-4 py-4 text-slate-700">{(o.clientCompany?.name ?? "-") + "."}</td>
 
                     <td className="px-4 py-4">
                       <select
@@ -441,9 +739,7 @@ export default function SalesManagerOpportunitiesPage() { // Glavna stranica za 
                       {Number(o.estimatedValue).toLocaleString()} {o.currency}.
                     </td>
 
-                    <td className="px-4 py-4 text-slate-700">
-                      {Math.round(Number(o.probability) * 100)}%.
-                    </td>
+                    <td className="px-4 py-4 text-slate-700">{Math.round(Number(o.probability) * 100)}%.</td>
                   </tr>
                 ))
               )}
@@ -451,7 +747,6 @@ export default function SalesManagerOpportunitiesPage() { // Glavna stranica za 
           </table>
         </div>
 
-        {/* Pagination controls */}
         <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3">
           <button
             type="button"
@@ -462,7 +757,9 @@ export default function SalesManagerOpportunitiesPage() { // Glavna stranica za 
             Prev.
           </button>
 
-          <div className="text-xs text-slate-600">Showing {rows.length} of {total}.</div>
+          <div className="text-xs text-slate-600">
+            Showing {rows.length} of {total}.
+          </div>
 
           <button
             type="button"
@@ -473,9 +770,208 @@ export default function SalesManagerOpportunitiesPage() { // Glavna stranica za 
             Next.
           </button>
         </div>
-      </section>
+      </div>
 
-      {/* Details drawer */}
+      {/* Create modal. */}
+      {showCreate ? (
+        <div className="fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/30" onClick={() => (creating ? null : setShowCreate(false))} />
+
+          <div className="absolute left-1/2 top-1/2 w-[95%] max-w-2xl -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+              <div>
+                <div className="text-sm font-semibold text-slate-900">New opportunity.</div>
+                <div className="text-xs text-slate-600">POST /api/opportunities.</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCreate(false)}
+                disabled={creating}
+                className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold disabled:opacity-50"
+              >
+                Close.
+              </button>
+            </div>
+
+            <div className="grid gap-3 p-5 md:grid-cols-2">
+              {picklistsError ? (
+                <div className="md:col-span-2 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+                  {picklistsError}.
+                </div>
+              ) : null}
+
+              <Field label="Freelancer (team)">
+                <select
+                  value={String(createForm.freelanceConsultantId || "")}
+                  onChange={(e) => onCreateFreelancerChange(Number(e.target.value || 0))}
+                  disabled={picklistsLoading || teamFreelancers.length === 0}
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400 disabled:opacity-50"
+                >
+                  <option value="">{picklistsLoading ? "Loading..." : "Select freelancer."}</option>
+                  {teamFreelancers.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}.
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-slate-500">Biraš freelancera iz svog tima.</p>
+              </Field>
+
+              <Field label="Contact">
+                <select
+                  value={String(createForm.contactId || "")}
+                  onChange={(e) => onCreateContactChange(Number(e.target.value || 0))}
+                  disabled={!createForm.freelanceConsultantId || picklistsLoading}
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400 disabled:opacity-50"
+                >
+                  <option value="">
+                    {!createForm.freelanceConsultantId ? "Select freelancer first." : "Select contact."}
+                  </option>
+                  {filteredContacts.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.clientCompany?.name ?? `Company #${c.clientCompanyId}`}).
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-slate-500">Kontakti se filtriraju po izabranom freelancer-u.</p>
+              </Field>
+
+              <Field label="Client company (optional)">
+                <select
+                  value={createForm.clientCompanyId === null ? "" : String(createForm.clientCompanyId)}
+                  onChange={(e) =>
+                    setCreateForm((f) => ({
+                      ...f,
+                      clientCompanyId: e.target.value ? Number(e.target.value) : null,
+                    }))
+                  }
+                  disabled={picklistsLoading || !createForm.freelanceConsultantId}
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400 disabled:opacity-50"
+                >
+                  <option value="">None.</option>
+                  {filteredCompanies.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}.
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-slate-500">
+                  Auto se postavi iz kontakta:{" "}
+                  {selectedContact ? (selectedContact.clientCompany?.name ?? `#${selectedContact.clientCompanyId}`) + "." : "-"}.
+                </p>
+              </Field>
+
+              <Field label="Title">
+                <input
+                  value={createForm.title}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, title: e.target.value }))}
+                  className="w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
+                />
+              </Field>
+
+              <Field label="Stage">
+                <select
+                  value={createForm.stage}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, stage: e.target.value }))}
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
+                >
+                  {STAGES.map((s) => (
+                    <option key={s} value={s}>
+                      {s}.
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="Status">
+                <select
+                  value={createForm.status}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, status: e.target.value }))}
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
+                >
+                  {STATUSES.map((s) => (
+                    <option key={s} value={s}>
+                      {s}.
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="Estimated value">
+                <input
+                  value={String(createForm.estimatedValue)}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, estimatedValue: Number(e.target.value) }))}
+                  type="number"
+                  min={0}
+                  className="w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
+                />
+              </Field>
+
+              <Field label="Currency">
+                <input
+                  value={createForm.currency}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, currency: e.target.value }))}
+                  className="w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
+                />
+              </Field>
+
+              <Field label="Probability (0..1)">
+                <input
+                  value={String(createForm.probability)}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, probability: Number(e.target.value) }))}
+                  type="number"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  className="w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
+                />
+              </Field>
+
+              <Field label="Expected close date (optional)">
+                <input
+                  value={createForm.expectedCloseDate}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, expectedCloseDate: e.target.value }))}
+                  type="date"
+                  className="w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
+                />
+              </Field>
+
+              <div className="md:col-span-2">
+                <Field label="Description (optional)">
+                  <textarea
+                    value={createForm.description}
+                    onChange={(e) => setCreateForm((f) => ({ ...f, description: e.target.value }))}
+                    rows={4}
+                    className="w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
+                  />
+                </Field>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-4">
+              <button
+                type="button"
+                onClick={() => setShowCreate(false)}
+                disabled={creating}
+                className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold disabled:opacity-50"
+              >
+                Cancel.
+              </button>
+
+              <button
+                type="button"
+                onClick={createOpportunity}
+                disabled={creating}
+                className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition disabled:opacity-50"
+              >
+                {creating ? "Creating..." : "Create."}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Details drawer. */}
       {openId ? (
         <div className="fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black/30" onClick={() => setOpenId(null)} />
@@ -506,8 +1002,7 @@ export default function SalesManagerOpportunitiesPage() { // Glavna stranica za 
                 <div className="rounded-3xl border border-slate-200 bg-gradient-to-r from-cyan-50 via-fuchsia-50 to-yellow-50 p-4">
                   <div className="text-lg font-semibold text-slate-900">{details.title}.</div>
                   <div className="text-sm text-slate-700">
-                    {details.contact?.name ?? `Contact #${details.contactId}`} ·{" "}
-                    {details.clientCompany?.name ?? "No client"}.
+                    {(details.contact?.name ?? `Contact #${details.contactId}`) + " · " + (details.clientCompany?.name ?? "No client") + "."}
                   </div>
                 </div>
 
@@ -534,7 +1029,7 @@ export default function SalesManagerOpportunitiesPage() { // Glavna stranica za 
                       <select
                         value={String(editForm.stage ?? details.stage)}
                         onChange={(e) => setEditForm((f) => ({ ...f, stage: e.target.value }))}
-                        className="w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
+                        className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
                       >
                         {STAGES.map((s) => (
                           <option key={s} value={s}>
@@ -548,7 +1043,7 @@ export default function SalesManagerOpportunitiesPage() { // Glavna stranica za 
                       <select
                         value={String(editForm.status ?? details.status)}
                         onChange={(e) => setEditForm((f) => ({ ...f, status: e.target.value }))}
-                        className="w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
+                        className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
                       >
                         {STATUSES.map((s) => (
                           <option key={s} value={s}>
@@ -593,26 +1088,35 @@ export default function SalesManagerOpportunitiesPage() { // Glavna stranica za 
 
                   <Field label="Expected close date (optional)">
                     <input
+                      type="date"
                       value={editForm.expectedCloseDate ? String(editForm.expectedCloseDate) : ""}
                       onChange={(e) => setEditForm((f) => ({ ...f, expectedCloseDate: e.target.value || null }))}
-                      type="date"
                       className="w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
                     />
                   </Field>
 
-                  <Field label="Client company ID (optional)">
-                    <input
+                  <Field label="Client company (optional)">
+                    <select
                       value={
-                        editForm.clientCompanyId === null || editForm.clientCompanyId === undefined
+                        (editForm.clientCompanyId as any) === null || editForm.clientCompanyId === undefined
                           ? ""
-                          : String(editForm.clientCompanyId)
+                          : String(editForm.clientCompanyId as any)
                       }
                       onChange={(e) =>
-                        setEditForm((f) => ({ ...f, clientCompanyId: e.target.value ? Number(e.target.value) : null }))
+                        setEditForm((f) => ({
+                          ...f,
+                          clientCompanyId: e.target.value ? Number(e.target.value) : null,
+                        }))
                       }
-                      placeholder="Leave empty for null."
-                      className="w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
-                    />
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
+                    >
+                      <option value="">None.</option>
+                      {companies.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}.
+                        </option>
+                      ))}
+                    </select>
                   </Field>
 
                   <button
@@ -633,8 +1137,8 @@ export default function SalesManagerOpportunitiesPage() { // Glavna stranica za 
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) { // Reusable field wrapper (label + content).
-  return ( // Renderujemo wrapper.
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
     <div>
       <div className="text-xs font-semibold text-slate-700">{label}.</div>
       <div className="mt-2">{children}</div>
