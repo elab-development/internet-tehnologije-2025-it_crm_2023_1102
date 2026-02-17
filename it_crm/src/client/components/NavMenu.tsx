@@ -23,6 +23,7 @@ function navByRole(role: Role): NavItem[] {
       return [
         { label: "Home", href: "/pages/admin/home" },
         { label: "Users", href: "/pages/admin/users" },
+        { label: "Competitors", href: "/pages/admin/industry-competitors" },
         { label: "Metrics", href: "/pages/admin/metrics/team" },
       ];
     case "sales_manager":
