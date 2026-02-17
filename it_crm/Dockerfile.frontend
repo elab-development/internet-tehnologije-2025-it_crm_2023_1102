@@ -1,0 +1,16 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# pg_isready dolazi iz postgresql-client.
+RUN apk add --no-cache postgresql-client
+
+# Kopiramo samo package fajlove radi boljeg cache-a (nije presudno u dev, ali je lepo).
+COPY package.json package-lock.json* ./
+
+# Ne instaliramo ovde obavezno, jer u dev modu mount-uješ kod.
+# Instalacija će se uraditi u entrypoint-u ako node_modules nije prisutan.
+# (Ovo izbegava konflikte Windows host node_modules vs linux container).
+COPY . .
+
+EXPOSE 3000

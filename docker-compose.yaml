@@ -1,0 +1,91 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: itcrm_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: itcrm
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d itcrm"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  app:
+    build:
+      context: ./it_crm
+      dockerfile: Dockerfile.frontend
+    container_name: itcrm_app
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - ./it_crm/.env
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/itcrm?schema=public
+
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_USER: postgres
+      DB_NAME: itcrm
+      PGPASSWORD: postgres
+
+      NODE_ENV: development
+      NEXT_TELEMETRY_DISABLED: "1"
+
+      CHOKIDAR_USEPOLLING: "true"
+      WATCHPACK_POLLING: "true"
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./it_crm:/app
+      - node_modules:/app/node_modules
+      - next_cache:/app/.next
+    entrypoint:
+      [
+        "sh",
+        "-c",
+        "sed -i 's/\\r$//' /app/entrypoint.sh /app/studio-entrypoint.sh 2>/dev/null || true; sh /app/entrypoint.sh"
+      ]
+
+  studio:
+    build:
+      context: ./it_crm
+      dockerfile: Dockerfile.backend
+    container_name: itcrm_studio
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - ./it_crm/.env
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/itcrm?schema=public
+
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_USER: postgres
+      DB_NAME: itcrm
+      PGPASSWORD: postgres
+    ports:
+      - "5555:5555"
+    volumes:
+      - ./it_crm:/app
+      - node_modules:/app/node_modules
+    entrypoint:
+      [
+        "sh",
+        "-c",
+        "sed -i 's/\\r$//' /app/entrypoint.sh /app/studio-entrypoint.sh 2>/dev/null || true; sh /app/studio-entrypoint.sh"
+      ]
+
+volumes:
+  db_data:
+  node_modules:
+  next_cache:
