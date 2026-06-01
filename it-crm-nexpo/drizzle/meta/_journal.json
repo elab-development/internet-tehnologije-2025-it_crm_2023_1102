@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1779185034947,
+      "tag": "0000_0001_create_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1779185157294,
+      "tag": "0001_0002_add_foreign_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1779185188729,
+      "tag": "0002_0003_add_defaults_and_unique_constraints",
+      "breakpoints": true
+    }
+  ]
+}
