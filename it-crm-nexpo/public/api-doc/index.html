@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>NEXPO IT CRM API Docs</title>
+
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css"
+    />
+
+    <style>
+      :root {
+        --green: #014830;
+        --green-soft: #f4faf7;
+        --green-light: #e8f3ef;
+        --border: #dce9e4;
+        --text: #12352a;
+      }
+
+      body {
+        margin: 0;
+        background: var(--green-soft);
+        color: var(--text);
+        font-family: Arial, Helvetica, sans-serif;
+      }
+
+      .docs-header {
+        background: #ffffff;
+        border-bottom: 1px solid var(--border);
+        padding: 18px 36px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .docs-brand {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+
+      .docs-brand img {
+        width: 130px;
+      }
+
+      .docs-badge {
+        background: var(--green-light);
+        color: var(--green);
+        padding: 8px 14px;
+        border-radius: 999px;
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      #swagger-ui {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 28px;
+      }
+
+      .swagger-ui .topbar {
+        display: none;
+      }
+
+      .swagger-ui .info {
+        background: #ffffff;
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        padding: 28px;
+        box-shadow: 0 18px 50px rgba(1, 72, 48, 0.08);
+      }
+
+      .swagger-ui .info .title {
+        color: var(--green) !important;
+        font-size: 34px !important;
+      }
+
+      .swagger-ui .info p,
+      .swagger-ui .info li {
+        color: #5f746d !important;
+      }
+
+      .swagger-ui .scheme-container {
+        background: #ffffff !important;
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        box-shadow: none !important;
+      }
+
+      .swagger-ui .opblock-tag {
+        color: var(--green) !important;
+        font-size: 24px !important;
+        border-bottom: 1px solid var(--border) !important;
+      }
+
+      .swagger-ui .opblock {
+        border-radius: 18px !important;
+        overflow: hidden;
+        box-shadow: 0 12px 32px rgba(1, 72, 48, 0.07);
+      }
+
+      .swagger-ui .opblock.opblock-get {
+        border-color: var(--green) !important;
+        background: rgba(1, 72, 48, 0.05) !important;
+      }
+
+      .swagger-ui .opblock.opblock-post {
+        border-color: #0b7a52 !important;
+        background: rgba(11, 122, 82, 0.06) !important;
+      }
+
+      .swagger-ui .opblock.opblock-put {
+        border-color: #2f8068 !important;
+        background: rgba(47, 128, 104, 0.06) !important;
+      }
+
+      .swagger-ui .opblock.opblock-delete {
+        border-color: #b42318 !important;
+        background: rgba(180, 35, 24, 0.06) !important;
+      }
+
+      .swagger-ui .btn.execute {
+        background: var(--green) !important;
+        border-color: var(--green) !important;
+        color: #ffffff !important;
+        border-radius: 12px !important;
+      }
+
+      .swagger-ui .btn.authorize {
+        background: var(--green-light) !important;
+        color: var(--green) !important;
+        border-color: var(--green-light) !important;
+        border-radius: 12px !important;
+      }
+
+      .swagger-ui input,
+      .swagger-ui textarea,
+      .swagger-ui select {
+        border-radius: 12px !important;
+        border: 1px solid var(--border) !important;
+      }
+
+      .swagger-ui table tbody tr td {
+        border-color: var(--border) !important;
+      }
+
+      .swagger-ui .model-box,
+      .swagger-ui section.models {
+        background: #ffffff !important;
+        border-radius: 18px !important;
+        border-color: var(--border) !important;
+      }
+    </style>
+  </head>
+
+  <body>
+    <header class="docs-header">
+      <div class="docs-brand">
+        <img src="/logo-big.png" alt="NEXPO logo" />
+        <strong>NEXPO IT CRM API Documentation</strong>
+      </div>
+
+      <span class="docs-badge">OpenAPI 3.0.3</span>
+    </header>
+
+    <div id="swagger-ui"></div>
+
+    <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+
+    <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
+
+    <script>
+      window.onload = () => {
+        window.ui = SwaggerUIBundle({
+          url: "/api-doc/openapi.yaml",
+          dom_id: "#swagger-ui",
+          presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+          layout: "BaseLayout",
+          deepLinking: true,
+          requestInterceptor: (request) => {
+            request.credentials = "include";
+            return request;
+          },
+        });
+      };
+    </script>
+  </body>
+</html>

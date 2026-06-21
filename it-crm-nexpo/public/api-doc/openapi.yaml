@@ -1,0 +1,1375 @@
+openapi: 3.0.3
+
+info:
+  title: NEXPO IT CRM API
+  version: 1.0.0
+  description: >
+    OpenAPI dokumentacija za NEXPO IT CRM aplikaciju.
+    Sistem koristi Next.js API rute, Drizzle ORM, PostgreSQL i HttpOnly cookie autentifikaciju.
+    Nakon login poziva, Swagger UI automatski šalje cookie token kroz requestInterceptor.
+
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+
+tags:
+  - name: Auth
+    description: Authentication routes.
+  - name: Dashboard
+    description: Basic CRM metrics.
+  - name: Admin
+    description: Admin analytics and user management.
+  - name: Clients
+    description: Client management.
+  - name: Project Requests
+    description: IT project request management.
+  - name: Offers
+    description: Business offer management.
+  - name: Interactions
+    description: Client communication records.
+  - name: External APIs
+    description: GitHub and Stack Overflow technology insights.
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: token
+
+  schemas:
+    ApiError:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          example: Unauthorized
+      required:
+        - success
+        - message
+
+    UserRole:
+      type: string
+      enum:
+        - admin
+        - sales_manager
+        - it_consultant
+
+    UserStatus:
+      type: string
+      enum:
+        - active
+        - inactive
+
+    ClientStatus:
+      type: string
+      enum:
+        - lead
+        - active
+        - inactive
+
+    ProjectRequestStatus:
+      type: string
+      enum:
+        - new
+        - reviewing
+        - approved
+        - rejected
+        - completed
+
+    OfferStatus:
+      type: string
+      enum:
+        - draft
+        - sent
+        - accepted
+        - rejected
+
+    InteractionType:
+      type: string
+      enum:
+        - email
+        - call
+        - meeting
+        - presentation
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Jelena Popadić
+        email:
+          type: string
+          format: email
+          example: jelena.popadic@nexpo.com
+        role:
+          $ref: "#/components/schemas/UserRole"
+        status:
+          $ref: "#/components/schemas/UserStatus"
+        createdAt:
+          type: string
+          format: date-time
+
+    Client:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Marko Petrović
+        email:
+          type: string
+          format: email
+          example: marko@techvision.com
+        company:
+          type: string
+          example: TechVision
+        status:
+          $ref: "#/components/schemas/ClientStatus"
+        userId:
+          type: integer
+          example: 2
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ProjectRequest:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        title:
+          type: string
+          example: CRM Web Application
+        description:
+          type: string
+          example: Client needs a simple CRM system for managing IT customers and offers.
+        status:
+          $ref: "#/components/schemas/ProjectRequestStatus"
+        clientId:
+          type: integer
+          example: 1
+        userId:
+          type: integer
+          example: 2
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Offer:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        price:
+          type: string
+          example: "2500.00"
+        status:
+          $ref: "#/components/schemas/OfferStatus"
+        projectRequestId:
+          type: integer
+          example: 1
+        userId:
+          type: integer
+          example: 2
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Interaction:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        type:
+          $ref: "#/components/schemas/InteractionType"
+        summary:
+          type: string
+          example: Initial email about CRM application requirements.
+        clientId:
+          type: integer
+          example: 1
+        userId:
+          type: integer
+          example: 2
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    GitHubRepository:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 28457823
+        name:
+          type: string
+          example: vercel/next.js
+        description:
+          type: string
+          nullable: true
+          example: The React Framework
+        language:
+          type: string
+          nullable: true
+          example: JavaScript
+        stars:
+          type: integer
+          example: 130000
+        url:
+          type: string
+          example: https://github.com/vercel/next.js
+
+    StackOverflowQuestion:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 123456
+        title:
+          type: string
+          example: How to use Next.js App Router?
+        url:
+          type: string
+          example: https://stackoverflow.com/questions/123456
+        score:
+          type: integer
+          example: 25
+        answers:
+          type: integer
+          example: 4
+        tags:
+          type: array
+          items:
+            type: string
+          example:
+            - next.js
+            - reactjs
+            - drizzle
+
+paths:
+  /api/auth/register:
+    post:
+      tags:
+        - Auth
+      summary: Register a new user.
+      description: Creates a new CRM user. Public route.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - email
+                - password
+              properties:
+                name:
+                  type: string
+                  example: Jelena Popadić
+                email:
+                  type: string
+                  format: email
+                  example: jelena.popadic@nexpo.com
+                password:
+                  type: string
+                  example: password
+                role:
+                  $ref: "#/components/schemas/UserRole"
+      responses:
+        "201":
+          description: User registered successfully.
+        "400":
+          description: Invalid input or user already exists.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "500":
+          description: Registration failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /api/auth/login:
+    post:
+      tags:
+        - Auth
+      summary: Login user.
+      description: Logs in user and stores JWT token in HttpOnly cookie.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: jelena.popadic@nexpo.com
+                password:
+                  type: string
+                  example: password
+      responses:
+        "200":
+          description: Login successful.
+        "400":
+          description: Missing email or password.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: User account is inactive.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /api/auth/logout:
+    post:
+      tags:
+        - Auth
+      summary: Logout user.
+      description: Removes authentication cookie.
+      responses:
+        "200":
+          description: Logout successful.
+
+  /api/auth/me:
+    get:
+      tags:
+        - Auth
+      summary: Get current user.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Current user loaded.
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /api/dashboard:
+    get:
+      tags:
+        - Dashboard
+      summary: Get dashboard metrics.
+      description: Returns basic CRM statistics for authenticated users.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Dashboard metrics loaded successfully.
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /api/admin/analytics:
+    get:
+      tags:
+        - Admin
+      summary: Get admin analytics.
+      description: Admin-only route for analytics cards and charts.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Admin analytics loaded successfully.
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Forbidden.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /api/admin/users:
+    get:
+      tags:
+        - Admin
+      summary: Get all users.
+      description: Admin-only route.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Users loaded successfully.
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Forbidden.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /api/admin/users/{id}:
+    put:
+      tags:
+        - Admin
+      summary: Update user role or status.
+      description: Admin-only route.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role:
+                  $ref: "#/components/schemas/UserRole"
+                status:
+                  $ref: "#/components/schemas/UserStatus"
+      responses:
+        "200":
+          description: User updated successfully.
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Forbidden.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: User not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+    delete:
+      tags:
+        - Admin
+      summary: Delete user.
+      description: Admin-only route.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      responses:
+        "200":
+          description: User deleted successfully.
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Forbidden.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "500":
+          description: User delete failed because user has related records.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /api/clients:
+    get:
+      tags:
+        - Clients
+      summary: Get all clients.
+      description: Available to all authenticated roles.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Clients loaded successfully.
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+    post:
+      tags:
+        - Clients
+      summary: Create client.
+      description: Available to admin and sales_manager.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - email
+                - company
+              properties:
+                name:
+                  type: string
+                  example: Marko Petrović
+                email:
+                  type: string
+                  format: email
+                  example: marko@techvision.com
+                company:
+                  type: string
+                  example: TechVision
+                status:
+                  $ref: "#/components/schemas/ClientStatus"
+      responses:
+        "201":
+          description: Client created successfully.
+        "400":
+          description: Missing required fields.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Forbidden.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /api/clients/{id}:
+    get:
+      tags:
+        - Clients
+      summary: Get client by ID.
+      description: Available to all authenticated roles.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      responses:
+        "200":
+          description: Client loaded successfully.
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: Client not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+    put:
+      tags:
+        - Clients
+      summary: Update client.
+      description: Available to admin and sales_manager.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: Marko Petrović
+                email:
+                  type: string
+                  format: email
+                  example: marko@techvision.com
+                company:
+                  type: string
+                  example: TechVision
+                status:
+                  $ref: "#/components/schemas/ClientStatus"
+      responses:
+        "200":
+          description: Client updated successfully.
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Forbidden.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: Client not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+    delete:
+      tags:
+        - Clients
+      summary: Delete client.
+      description: Available to admin and sales_manager.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      responses:
+        "200":
+          description: Client deleted successfully.
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Forbidden.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "500":
+          description: Client delete failed because client has related records.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /api/project-requests:
+    get:
+      tags:
+        - Project Requests
+      summary: Get all project requests.
+      description: Available to all authenticated roles.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Project requests loaded successfully.
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+    post:
+      tags:
+        - Project Requests
+      summary: Create project request.
+      description: Available to admin and sales_manager.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - title
+                - description
+                - clientId
+              properties:
+                title:
+                  type: string
+                  example: CRM Web Application
+                description:
+                  type: string
+                  example: Client needs a simple CRM application.
+                status:
+                  $ref: "#/components/schemas/ProjectRequestStatus"
+                clientId:
+                  type: integer
+                  example: 1
+      responses:
+        "201":
+          description: Project request created successfully.
+        "400":
+          description: Missing required fields.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Forbidden.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /api/project-requests/{id}:
+    get:
+      tags:
+        - Project Requests
+      summary: Get project request by ID.
+      description: Available to all authenticated roles.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      responses:
+        "200":
+          description: Project request loaded successfully.
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: Project request not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+    put:
+      tags:
+        - Project Requests
+      summary: Update project request.
+      description: Available to admin and sales_manager.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                  example: CRM Web Application
+                description:
+                  type: string
+                  example: Updated CRM application requirements.
+                status:
+                  $ref: "#/components/schemas/ProjectRequestStatus"
+                clientId:
+                  type: integer
+                  example: 1
+      responses:
+        "200":
+          description: Project request updated successfully.
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Forbidden.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: Project request not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+    delete:
+      tags:
+        - Project Requests
+      summary: Delete project request.
+      description: Available to admin and sales_manager.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      responses:
+        "200":
+          description: Project request deleted successfully.
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Forbidden.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "500":
+          description: Project request delete failed because request has related offers.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /api/offers:
+    get:
+      tags:
+        - Offers
+      summary: Get all offers.
+      description: Available to admin and sales_manager.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Offers loaded successfully.
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Forbidden.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+    post:
+      tags:
+        - Offers
+      summary: Create offer.
+      description: Available to admin and sales_manager.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - price
+                - projectRequestId
+              properties:
+                price:
+                  type: string
+                  example: "2500.00"
+                status:
+                  $ref: "#/components/schemas/OfferStatus"
+                projectRequestId:
+                  type: integer
+                  example: 1
+      responses:
+        "201":
+          description: Offer created successfully.
+        "400":
+          description: Missing required fields.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Forbidden.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /api/offers/{id}:
+    get:
+      tags:
+        - Offers
+      summary: Get offer by ID.
+      description: Available to admin and sales_manager.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      responses:
+        "200":
+          description: Offer loaded successfully.
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Forbidden.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: Offer not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+    put:
+      tags:
+        - Offers
+      summary: Update offer.
+      description: Available to admin and sales_manager.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                price:
+                  type: string
+                  example: "3200.00"
+                status:
+                  $ref: "#/components/schemas/OfferStatus"
+                projectRequestId:
+                  type: integer
+                  example: 1
+      responses:
+        "200":
+          description: Offer updated successfully.
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Forbidden.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: Offer not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+    delete:
+      tags:
+        - Offers
+      summary: Delete offer.
+      description: Available to admin and sales_manager.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      responses:
+        "200":
+          description: Offer deleted successfully.
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Forbidden.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "500":
+          description: Offer delete failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /api/interactions:
+    get:
+      tags:
+        - Interactions
+      summary: Get all interactions.
+      description: Available to all authenticated roles.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Interactions loaded successfully.
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+    post:
+      tags:
+        - Interactions
+      summary: Create interaction.
+      description: Available to all authenticated roles.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - type
+                - summary
+                - clientId
+              properties:
+                type:
+                  $ref: "#/components/schemas/InteractionType"
+                summary:
+                  type: string
+                  example: Online meeting about CRM requirements.
+                clientId:
+                  type: integer
+                  example: 1
+      responses:
+        "201":
+          description: Interaction created successfully.
+        "400":
+          description: Missing required fields.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /api/interactions/{id}:
+    get:
+      tags:
+        - Interactions
+      summary: Get interaction by ID.
+      description: Available to all authenticated roles.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      responses:
+        "200":
+          description: Interaction loaded successfully.
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: Interaction not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+    put:
+      tags:
+        - Interactions
+      summary: Update interaction.
+      description: Available to all authenticated roles.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type:
+                  $ref: "#/components/schemas/InteractionType"
+                summary:
+                  type: string
+                  example: Updated meeting summary.
+                clientId:
+                  type: integer
+                  example: 1
+      responses:
+        "200":
+          description: Interaction updated successfully.
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: Interaction not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+    delete:
+      tags:
+        - Interactions
+      summary: Delete interaction.
+      description: Available to all authenticated roles.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          example: 1
+      responses:
+        "200":
+          description: Interaction deleted successfully.
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "500":
+          description: Interaction delete failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /api/external/github:
+    get:
+      tags:
+        - External APIs
+      summary: Search GitHub repositories.
+      description: Uses GitHub Public API for technology insights.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: keyword
+          in: query
+          required: true
+          schema:
+            type: string
+          example: Next.js CRM
+      responses:
+        "200":
+          description: GitHub repositories loaded.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: GitHub repositories loaded
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/GitHubRepository"
+        "400":
+          description: Keyword is required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /api/external/stack-overflow:
+    get:
+      tags:
+        - External APIs
+      summary: Search Stack Overflow questions.
+      description: Uses Stack Exchange API for technology risk insights.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: keyword
+          in: query
+          required: true
+          schema:
+            type: string
+          example: Drizzle Next.js
+      responses:
+        "200":
+          description: Stack Overflow questions loaded.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Stack Overflow questions loaded
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/StackOverflowQuestion"
+        "400":
+          description: Keyword is required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
