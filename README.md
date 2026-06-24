@@ -4,6 +4,9 @@ NEXPO IT CRM je fullstack web aplikacija za upravljanje IT klijentima, projektni
 
 Aplikacija podržava autentifikaciju korisnika, rad sa različitim korisničkim ulogama, CRUD operacije, admin analitiku, javne API integracije, Swagger/OpenAPI dokumentaciju i Docker pokretanje.
 
+![IT CRM Logo Big](./images/logo-big.png)
+![IT CRM Logo Small](./images/logo-small.png)
+
 ---
 
 ## Tehnologije
@@ -75,6 +78,8 @@ Client 1 ──── * Interaction
 
 ProjectRequest 1 ──── * Offer
 ```
+
+![IT CRM Logo Small](./images/IT%20CRM%20NEXPO%20-%20PMOV.png)
 
 ---
 
