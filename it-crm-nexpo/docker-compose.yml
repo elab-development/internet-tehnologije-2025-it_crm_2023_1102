@@ -1,0 +1,112 @@
+services:
+  # Servis za Next.js aplikaciju.
+  app:
+    # Docker image se pravi iz trenutnog foldera.
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    # Ime containera za aplikaciju.
+    container_name: nexpo-app
+
+    # Povezuje lokalni port 3000 sa portom 3000 u containeru.
+    ports:
+      - "3000:3000"
+
+    # Učitava environment promenljive iz .env.docker fajla.
+    env_file:
+      - .env.docker
+
+    # Aplikacija se pokreće tek kada baza bude spremna.
+    depends_on:
+      db:
+        condition: service_healthy
+
+    # Prvo pokreće Drizzle migracije, zatim seed podatke i onda Next.js aplikaciju.
+    command: >
+      sh -c "
+      npm run db:migrate &&
+      npm run db:seed &&
+      npm run dev -- --hostname 0.0.0.0
+      "
+
+    # Omogućava da se lokalni kod vidi u containeru tokom razvoja.
+    volumes:
+      - .:/app
+      - /app/node_modules
+
+    # Automatski restartuje container osim ako ga ručno ne zaustavimo.
+    restart: unless-stopped
+
+  # Servis za PostgreSQL bazu podataka.
+  db:
+    # Koristi zvanični PostgreSQL image.
+    image: postgres:16-alpine
+
+    # Ime containera za bazu.
+    container_name: nexpo-db
+
+    # Povezuje lokalni port 5432 sa portom 5432 u containeru.
+    ports:
+      - "5432:5432"
+
+    # Podešavanja baze koja se kreira pri prvom pokretanju.
+    environment:
+      POSTGRES_DB: it_crm_nexpo
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+
+    # Čuva podatke baze i posle gašenja containera.
+    volumes:
+      - nexpo_db_data:/var/lib/postgresql/data
+
+    # Proverava da li je baza spremna za konekciju.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d it_crm_nexpo"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+    # Automatski restartuje bazu osim ako je ručno ne zaustavimo.
+    restart: unless-stopped
+
+  # Servis za Drizzle Studio.
+  studio:
+    # Koristi isti Dockerfile kao aplikacija.
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    # Ime containera za Drizzle Studio.
+    container_name: nexpo-studio
+
+    # Drizzle Studio će biti dostupan na localhost:4983.
+    ports:
+      - "4983:4983"
+
+    # Koristi iste environment promenljive kao aplikacija.
+    env_file:
+      - .env.docker
+
+    # Drizzle Studio se pokreće tek kada baza bude spremna.
+    depends_on:
+      db:
+        condition: service_healthy
+
+    # Pokreće Drizzle Studio na hostu 0.0.0.0 da bi bio dostupan iz browsera.
+    command: >
+      sh -c "
+      npx drizzle-kit studio --host=0.0.0.0 --port=4983
+      "
+
+    # Omogućava da Studio koristi trenutni lokalni kod i Drizzle šemu.
+    volumes:
+      - .:/app
+      - /app/node_modules
+
+    # Automatski restartuje Studio osim ako ga ručno ne zaustavimo.
+    restart: unless-stopped
+
+# Docker volume za trajno čuvanje PostgreSQL podataka.
+volumes:
+  nexpo_db_data:
